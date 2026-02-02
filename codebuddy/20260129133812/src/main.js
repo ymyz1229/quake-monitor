@@ -3,6 +3,9 @@
  * 全球地震实时监测平台 - 3D地球版 (增强版)
  */
 
+// 从全局获取 THREE（CDN 加载）
+const THREE = window.THREE;
+
 // 全局状态
 const state = {
   earthquakes: [],
@@ -45,20 +48,25 @@ const MAPBOX_CONFIG = {
  * 初始化应用
  */
 async function init() {
-  setDefaultDates();
-  bindEvents();
-  
-  // 初始化3D地球
-  await initGlobe();
-  
-  // 加载边界数据
-  await loadBorderData();
-  
-  // 加载数据
-  await loadEarthquakeData();
-  
-  // 启动定时刷新
-  startAutoRefresh();
+  try {
+    setDefaultDates();
+    bindEvents();
+    
+    // 初始化3D地球
+    await initGlobe();
+    
+    // 加载边界数据
+    await loadBorderData();
+    
+    // 加载数据
+    await loadEarthquakeData();
+    
+    // 启动定时刷新
+    startAutoRefresh();
+  } catch (error) {
+    console.error('应用初始化失败:', error);
+    showError('应用初始化失败: ' + error.message);
+  }
 }
 
 /**
@@ -160,6 +168,13 @@ function latLngToVector3(lat, lng, radius) {
 async function initGlobe() {
   const container = document.getElementById('globe-container');
   if (!container) return;
+  
+  // 检查 THREE 是否可用
+  if (!window.THREE) {
+    console.error('THREE.js 未加载');
+    container.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#ff6b6b;">3D引擎加载失败</div>';
+    return;
+  }
   
   const width = container.clientWidth;
   const height = container.clientHeight;
