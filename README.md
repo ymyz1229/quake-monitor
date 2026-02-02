@@ -23,7 +23,7 @@
 
 ## 🚀 在线演示
 
-👉 [https://quake-monitor-nine.vercel.app](https://quake-monitor-nine.vercel.app)
+👉 [https://quake-monitor-peach.vercel.app/](https://quake-monitor-peach.vercel.app/)
 
 ## 📁 项目结构
 
