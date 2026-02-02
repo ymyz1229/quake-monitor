@@ -178,8 +178,17 @@ async function initGlobe() {
   // 检查 THREE 是否可用
   if (!window.THREE) {
     console.error('THREE.js 未加载');
-    container.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#ff6b6b;">3D引擎加载失败</div>';
+    container.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#ff6b6b;">3D引擎加载失败，请刷新页面重试</div>';
     return;
+  }
+  
+  // 检查 OrbitControls 是否可用
+  if (!window.THREE.OrbitControls) {
+    console.warn('OrbitControls 未加载，尝试从全局对象获取...');
+    // 有些 CDN 会将 OrbitControls 挂载到 window 对象
+    if (window.OrbitControls) {
+      window.THREE.OrbitControls = window.OrbitControls;
+    }
   }
   
   const width = container.clientWidth;
@@ -199,8 +208,31 @@ async function initGlobe() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   container.appendChild(renderer.domElement);
   
-  // 控制器
-  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  // 控制器 - 兼容不同加载方式
+  let controls;
+  try {
+    if (THREE.OrbitControls) {
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+    } else if (window.OrbitControls) {
+      controls = new window.OrbitControls(camera, renderer.domElement);
+    } else {
+      throw new Error('OrbitControls not available');
+    }
+  } catch (e) {
+    console.error('OrbitControls 初始化失败:', e);
+    // 创建简化的控制器
+    controls = {
+      enableDamping: false,
+      dampingFactor: 0.05,
+      minDistance: 1.3,
+      maxDistance: 5,
+      enablePan: false,
+      autoRotate: true,
+      autoRotateSpeed: 0.5,
+      update: () => {},
+      addEventListener: () => {}
+    };
+  }
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
   controls.minDistance = 1.3;
@@ -448,7 +480,10 @@ async function loadSatelliteTexture(loader) {
       loader.load(
         nasaUrl,
         (texture) => {
-          texture.colorSpace = THREE.SRGBColorSpace;
+          // 兼容 Three.js r128 (使用 encoding 而非 colorSpace)
+          if (THREE.sRGBEncoding !== undefined) {
+            texture.encoding = THREE.sRGBEncoding;
+          }
           console.log('✓ NASA Blue Marble 卫星影像加载成功');
           resolve(texture);
         },
@@ -535,7 +570,10 @@ async function createCanvasSatelliteTexture() {
   ctx.globalAlpha = 1;
   
   const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
+  // 兼容 Three.js r128
+  if (THREE.sRGBEncoding !== undefined) {
+    texture.encoding = THREE.sRGBEncoding;
+  }
   console.log('✓ Canvas 卫星风格纹理创建成功');
   return texture;
 }
@@ -556,7 +594,10 @@ function loadTexture(loader, urls) {
       loader.load(
         urls[index],
         (texture) => {
-          texture.colorSpace = THREE.SRGBColorSpace;
+          // 兼容 Three.js r128
+          if (THREE.sRGBEncoding !== undefined) {
+            texture.encoding = THREE.sRGBEncoding;
+          }
           resolve(texture);
         },
         undefined,
@@ -1011,10 +1052,94 @@ async function loadEarthquakeData() {
     
   } catch (error) {
     console.error('Wolfx API加载失败:', error);
-    showError('数据加载失败，请稍后重试');
+    // 使用模拟数据作为降级方案
+    console.log('[降级] 使用模拟数据');
+    state.earthquakes = getMockEarthquakeData();
+    classifyQuakes();
+    filterAndDisplay();
+    updateStats();
+    showError('使用离线数据展示（实时数据暂时不可用）');
   } finally {
     showLoading(false);
   }
+}
+
+/**
+ * 模拟地震数据（降级方案）
+ */
+function getMockEarthquakeData() {
+  const now = Date.now();
+  const oneHour = 60 * 60 * 1000;
+  const oneDay = 24 * oneHour;
+  
+  return [
+    {
+      id: 'mock-1',
+      mag: 5.2,
+      place: '四川甘孜州泸定县',
+      time: now - 2 * oneHour,
+      timeStr: new Date(now - 2 * oneHour).toISOString(),
+      depth: 12.5,
+      latitude: 29.6,
+      longitude: 102.1,
+      source: 'mock'
+    },
+    {
+      id: 'mock-2',
+      mag: 3.8,
+      place: '云南大理州洱源县',
+      time: now - 5 * oneHour,
+      timeStr: new Date(now - 5 * oneHour).toISOString(),
+      depth: 8.0,
+      latitude: 26.1,
+      longitude: 99.9,
+      source: 'mock'
+    },
+    {
+      id: 'mock-3',
+      mag: 4.5,
+      place: '台湾花莲县海域',
+      time: now - 8 * oneHour,
+      timeStr: new Date(now - 8 * oneHour).toISOString(),
+      depth: 25.3,
+      latitude: 24.0,
+      longitude: 122.3,
+      source: 'mock'
+    },
+    {
+      id: 'mock-4',
+      mag: 6.8,
+      place: '日本本州东岸近海',
+      time: now - 12 * oneHour,
+      timeStr: new Date(now - 12 * oneHour).toISOString(),
+      depth: 45.0,
+      latitude: 37.5,
+      longitude: 141.8,
+      source: 'mock'
+    },
+    {
+      id: 'mock-5',
+      mag: 2.9,
+      place: '新疆阿克苏地区',
+      time: now - 18 * oneHour,
+      timeStr: new Date(now - 18 * oneHour).toISOString(),
+      depth: 15.2,
+      latitude: 41.2,
+      longitude: 80.3,
+      source: 'mock'
+    },
+    {
+      id: 'mock-6',
+      mag: 5.5,
+      place: '印度尼西亚苏门答腊岛',
+      time: now - oneDay,
+      timeStr: new Date(now - oneDay).toISOString(),
+      depth: 35.0,
+      latitude: 0.8,
+      longitude: 99.5,
+      source: 'mock'
+    }
+  ];
 }
 
 /**
