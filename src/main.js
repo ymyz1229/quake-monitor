@@ -25,7 +25,7 @@ const API_CONFIG = {
   usgs: '/api/usgs',
   // 世界边界数据 (Natural Earth Data)
   worldBorders: 'https://raw.githubusercontent.com/georgique/world-geojson/master/countries/all.json',
-  // 中国边界数据
+  // 中国边界数据 - 使用 HTTPS
   chinaBorder: 'https://geojson.cn/api/data/china.json',
   chinaProvinces: 'https://geojson.cn/api/data/china-provinces.json',
   // 备用世界边界数据（如果主源失败）
@@ -1021,17 +1021,46 @@ async function loadEarthquakeData() {
  * 获取Wolfx数据
  */
 async function fetchWolfxData() {
+  console.log('=== fetchWolfxData 开始 ===');
   console.log('正在请求:', API_CONFIG.wolfx);
-  const response = await fetch(API_CONFIG.wolfx);
-  console.log('响应状态:', response.status);
+  console.log('当前页面URL:', window.location.href);
+  
+  let response;
+  try {
+    response = await fetch(API_CONFIG.wolfx, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+    console.log('响应状态:', response.status, response.statusText);
+    console.log('响应头:', [...response.headers.entries()]);
+  } catch (fetchError) {
+    console.error('Fetch 请求失败:', fetchError);
+    throw new Error(`网络请求失败: ${fetchError.message}`);
+  }
   
   if (!response.ok) {
-    const errorText = await response.text();
+    let errorText;
+    try {
+      errorText = await response.text();
+    } catch (e) {
+      errorText = '无法读取错误响应';
+    }
     console.error('API 错误响应:', errorText);
     throw new Error(`HTTP ${response.status}: ${errorText}`);
   }
   
-  const data = await response.json();
+  let data;
+  try {
+    data = await response.json();
+  } catch (jsonError) {
+    console.error('JSON 解析失败:', jsonError);
+    const text = await response.text();
+    console.error('原始响应:', text.substring(0, 500));
+    throw new Error('数据解析失败');
+  }
+  
   console.log('获取数据成功, 条目数:', Object.keys(data).length);
   const earthquakes = [];
   
