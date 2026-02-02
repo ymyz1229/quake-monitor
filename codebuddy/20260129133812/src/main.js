@@ -19,10 +19,10 @@ const state = {
   chinaBorders: null
 };
 
-// API配置
+// API配置 - 使用本地代理避免 CORS 问题
 const API_CONFIG = {
-  wolfx: 'https://api.wolfx.jp/cenc_eqlist.json',
-  usgs: 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson',
+  wolfx: '/api/wolfx',
+  usgs: '/api/usgs',
   // 世界边界数据 (Natural Earth Data)
   worldBorders: 'https://raw.githubusercontent.com/georgique/world-geojson/master/countries/all.json',
   // 中国边界数据
