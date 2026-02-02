@@ -3,9 +3,6 @@
  * 全球地震实时监测平台 - 3D地球版 (增强版)
  */
 
-// 从全局获取 THREE（CDN 加载）
-const THREE = window.THREE;
-
 // 全局状态
 const state = {
   earthquakes: [],
