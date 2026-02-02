@@ -1,6 +1,6 @@
 # 🌍 震讯通 - 地震实时监测平台
 
-[![Live Demo](https://img.shields.io/badge/demo-online-brightgreen)](https://quake-monitor-nine.vercel.app)
+[![Live Demo](https://img.shields.io/badge/demo-online-brightgreen)](https://quake-monitor-peach.vercel.app/)
 [![GitHub](https://img.shields.io/badge/github-ymyz1229-blue)](https://github.com/ymyz1229/quake-monitor)
 
 一个专注于中国及全球地震数据实时监测与可视化分析的专业级数据平台。
