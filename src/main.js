@@ -96,6 +96,45 @@ function formatDate(date) {
 }
 
 /**
+ * 根据周期类型更新日期范围
+ * @param {string} period - 周期类型：day | week | month
+ */
+function updateDateRangeByPeriod(period) {
+  const today = new Date();
+  const endDateInput = document.getElementById('end-date');
+  const startDateInput = document.getElementById('start-date');
+  
+  if (!endDateInput || !startDateInput) return;
+  
+  // 结束日期始终为今天
+  endDateInput.value = formatDate(today);
+  
+  // 根据周期计算开始日期
+  let startDate;
+  switch (period) {
+    case 'day':
+      // 过去24小时
+      startDate = new Date(today - 24 * 60 * 60 * 1000);
+      break;
+    case 'week':
+      // 过去7天
+      startDate = new Date(today - 7 * 24 * 60 * 60 * 1000);
+      break;
+    case 'month':
+      // 过去30天
+      startDate = new Date(today - 30 * 24 * 60 * 60 * 1000);
+      break;
+    default:
+      // 默认过去24小时
+      startDate = new Date(today - 24 * 60 * 60 * 1000);
+  }
+  
+  startDateInput.value = formatDate(startDate);
+  
+  console.log(`[日期更新] ${period}: ${startDateInput.value} ~ ${endDateInput.value}`);
+}
+
+/**
  * 加载边界数据
  */
 async function loadBorderData() {
@@ -245,7 +284,29 @@ async function initGlobe() {
   controls.enablePan = false;
   controls.autoRotate = true;
   controls.autoRotateSpeed = 0.5;
-  
+
+  // 自动旋转控制：拖动后5秒停止，5秒后恢复
+  let autoRotateTimeout = null;
+
+  // 监听控制器变化（拖动时）
+  controls.addEventListener('start', () => {
+    // 开始拖动时停止自动旋转
+    controls.autoRotate = false;
+    // 清除之前的计时器
+    if (autoRotateTimeout) {
+      clearTimeout(autoRotateTimeout);
+      autoRotateTimeout = null;
+    }
+  });
+
+  controls.addEventListener('end', () => {
+    // 停止拖动后，5秒后恢复自动旋转
+    autoRotateTimeout = setTimeout(() => {
+      controls.autoRotate = true;
+      autoRotateTimeout = null;
+    }, 5000);
+  });
+
   // 地球组
   const earthGroup = new THREE.Group();
   scene.add(earthGroup);
@@ -403,13 +464,16 @@ async function initGlobe() {
   // 动画循环
   function animate() {
     requestAnimationFrame(animate);
-    
+
     // 更新涟漪动画
     updateRippleAnimations();
-    
+
     // 检查中国聚焦状态
     checkChinaFocus();
-    
+
+    // 更新标记大小，保持固定的屏幕像素大小（20px）
+    updateMarkerSizes(camera, container);
+
     controls.update();
     renderer.render(scene, camera);
   }
@@ -771,20 +835,17 @@ async function loadChinaProvinces() {
  */
 function updateGlobeMarkers(earthquakes) {
   if (!state.globe) return;
-  
-  // 清除旧标记
+
+  // 清除旧标记（涟漪现在是标记的子对象，一起被移除）
   state.globe.markers.forEach(marker => {
     state.globe.markersGroup.remove(marker);
   });
-  state.globe.ripples.forEach(ripple => {
-    state.globe.ripplesGroup.remove(ripple);
-  });
   state.globe.markers = [];
   state.globe.ripples = [];
-  
+
   earthquakes.forEach((eq, index) => {
     if (!eq.latitude || !eq.longitude) return;
-    
+
     const marker = createGlobeMarker(eq, index);
     if (marker) {
       state.globe.markersGroup.add(marker);
@@ -800,76 +861,84 @@ function createGlobeMarker(eq, index) {
   const lat = eq.latitude;
   const lng = eq.longitude;
   const mag = eq.mag || 0;
-  
-  const pos = latLngToVector3(lat, lng, 1);
+
+  // 计算位置（稍微抬高一点，避免与地球表面重叠）
+  const surfacePos = latLngToVector3(lat, lng, 1);
+  const elevatedPos = latLngToVector3(lat, lng, 1.005);
   const color = new THREE.Color(getMagColor(mag));
-  const size = Math.max(0.015, (mag / 10) * 0.04);
-  
-  // 标记组
+  // 固定大小，不随震级变化
+  const size = 0.015;
+
+  // 标记组 - 放在抬高后的位置
   const group = new THREE.Group();
-  group.position.copy(pos);
+  group.position.copy(elevatedPos);
   group.userData = { id: eq.id, eq, lat, lng };
-  
-  // 中心点 - 紧贴地球表面
-  const dotGeometry = new THREE.SphereGeometry(size, 16, 16);
+
+  // 计算朝向 - 让标记平贴在地球表面（切平面方向）
+  const normal = surfacePos.clone().normalize();
+  const defaultUp = new THREE.Vector3(0, 0, 1);
+  const quaternion = new THREE.Quaternion();
+  quaternion.setFromUnitVectors(defaultUp, normal);
+  group.quaternion.copy(quaternion);
+
+  // 中心点 - 2D圆盘（平贴在地球表面）
+  const dotGeometry = new THREE.CircleGeometry(size, 32);
   const dotMaterial = new THREE.MeshBasicMaterial({
     color: color,
     transparent: true,
-    opacity: 0.95
+    opacity: 0.95,
+    side: THREE.DoubleSide
   });
   const dot = new THREE.Mesh(dotGeometry, dotMaterial);
   dot.userData = { isClickable: true, eq };
   group.add(dot);
-  
-  // 光晕效果
-  const glowGeometry = new THREE.RingGeometry(size * 1.5, size * 3, 32);
-  const glowMaterial = new THREE.MeshBasicMaterial({
+
+  // 外圈光环 - 2D圆环（平贴在地球表面）
+  const ringGeometry = new THREE.RingGeometry(size * 1.3, size * 1.6, 32);
+  const ringMaterial = new THREE.MeshBasicMaterial({
     color: color,
     transparent: true,
-    opacity: 0.4,
+    opacity: 0.5,
     side: THREE.DoubleSide
   });
-  const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-  glow.lookAt(0, 0, 0);
-  glow.userData = { isClickable: true, eq };
-  group.add(glow);
-  
-  // 创建动态涟漪
+  const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+  ring.userData = { isClickable: true, eq };
+  group.add(ring);
+
+  // 创建动态涟漪（平贴在地球表面，震级>=3显示）
   if (mag >= 3) {
-    const rippleCount = Math.min(3, Math.floor(mag / 2));
-    
+    const rippleCount = Math.min(2, Math.floor(mag / 2));
     for (let i = 0; i < rippleCount; i++) {
-      createRipple(group, color, size, i, mag);
+      createFlatRipple(group, color, size, i, mag);
     }
   }
-  
+
   return group;
 }
 
 /**
- * 创建涟漪效果
+ * 创建平贴涟漪效果（宽度更细）
  */
-function createRipple(parentGroup, color, baseSize, index, mag) {
-  const rippleGroup = new THREE.Group();
-  
+function createFlatRipple(parentGroup, color, baseSize, index, mag) {
   // 多个圆环形成涟漪
   const rings = [];
   const ringCount = 3;
-  
+
   for (let r = 0; r < ringCount; r++) {
-    const innerRadius = baseSize * (2 + index * 2 + r * 0.5);
-    const outerRadius = innerRadius + baseSize * 0.3;
-    
+    // 保持原来的半径比例
+    const innerRadius = baseSize * (1.8 + index * 1.3 + r * 0.35);
+    // 宽度更细：从 0.2 改为 0.08
+    const outerRadius = innerRadius + baseSize * 0.08;
+
     const geometry = new THREE.RingGeometry(innerRadius, outerRadius, 48);
     const material = new THREE.MeshBasicMaterial({
       color: color,
       transparent: true,
-      opacity: 0.6 - index * 0.15,
+      opacity: 0.5 - index * 0.1,
       side: THREE.DoubleSide
     });
-    
+
     const ring = new THREE.Mesh(geometry, material);
-    ring.lookAt(0, 0, 0);
     ring.userData = {
       isRipple: true,
       baseRadius: innerRadius,
@@ -877,18 +946,14 @@ function createRipple(parentGroup, color, baseSize, index, mag) {
       ringIndex: r,
       phase: (index * 2 + r) * 0.5
     };
-    
+
     rings.push(ring);
-    rippleGroup.add(ring);
+    parentGroup.add(ring);
   }
-  
-  // 将涟漪添加到父组
-  parentGroup.add(rippleGroup);
-  
+
   // 保存涟漪引用
   if (!state.globe.ripples) state.globe.ripples = [];
   state.globe.ripples.push({
-    group: rippleGroup,
     rings: rings,
     mag: mag,
     baseSize: baseSize
@@ -925,6 +990,38 @@ function updateRippleAnimations() {
       // 旋转效果
       ring.rotation.z = time * 0.1 * (ringIndex % 2 === 0 ? 1 : -1);
     });
+  });
+}
+
+/**
+ * 更新标记大小，保持固定的屏幕像素大小
+ * @param {THREE.Camera} camera - 相机
+ * @param {HTMLElement} container - 容器
+ */
+function updateMarkerSizes(camera, container) {
+  if (!state.globe || !state.globe.markers) return;
+
+  const targetPixelSize = 8; // 目标像素大小
+  const height = container.clientHeight;
+
+  state.globe.markers.forEach(marker => {
+    // 计算标记到相机的距离
+    const distance = marker.position.distanceTo(camera.position);
+
+    // 计算视锥体高度（在标记距离处）
+    const vFOV = THREE.MathUtils.degToRad(camera.fov);
+    const frustumHeight = 2 * distance * Math.tan(vFOV / 2);
+
+    // 计算世界单位到像素的转换比例
+    const worldToPixel = height / frustumHeight;
+
+    // 计算需要的缩放比例，使标记保持固定像素大小
+    const baseSize = 0.015; // 基础大小
+    const currentPixelSize = baseSize * worldToPixel;
+    const scale = targetPixelSize / currentPixelSize;
+
+    // 应用缩放
+    marker.scale.setScalar(scale);
   });
 }
 
@@ -974,6 +1071,11 @@ function bindEvents() {
     item.addEventListener('click', () => {
       document.querySelectorAll('.quick-filter-item').forEach(i => i.classList.remove('active'));
       item.classList.add('active');
+      
+      // 根据选择的类型更新日期范围
+      const period = item.dataset.period;
+      updateDateRangeByPeriod(period);
+      
       loadEarthquakeData();
     });
   });
@@ -988,8 +1090,14 @@ function bindEvents() {
   });
   
   // 震级筛选
-  document.getElementById('mag-min').addEventListener('change', filterAndDisplay);
-  document.getElementById('mag-max').addEventListener('change', filterAndDisplay);
+  document.getElementById('mag-min').addEventListener('change', () => {
+    updateTimeRangeCounts(); // 更新左边时间范围统计
+    filterAndDisplay();
+  });
+  document.getElementById('mag-max').addEventListener('change', () => {
+    updateTimeRangeCounts(); // 更新左边时间范围统计
+    filterAndDisplay();
+  });
   
   // 刷新按钮
   document.getElementById('refresh-btn').addEventListener('click', refreshData);
@@ -1046,20 +1154,27 @@ function bindEvents() {
  */
 async function loadEarthquakeData() {
   showLoading(true);
-  
+
   try {
     const data = await fetchWolfxData();
     state.earthquakes = data;
-    
+
+    // 计算各时间范围的地震数量统计
+    updateTimeRangeCounts();
+
     classifyQuakes();
     filterAndDisplay();
     updateStats();
-    
+
   } catch (error) {
     console.error('Wolfx API加载失败:', error);
     // 使用模拟数据作为降级方案
     console.log('[降级] 使用模拟数据');
     state.earthquakes = getMockEarthquakeData();
+
+    // 计算各时间范围的地震数量统计
+    updateTimeRangeCounts();
+
     classifyQuakes();
     filterAndDisplay();
     updateStats();
@@ -1200,23 +1315,15 @@ async function fetchWolfxData() {
 function parseWolfxData(data) {
   console.log('解析数据, 条目数:', Object.keys(data).length);
   const earthquakes = [];
-  
+
   Object.keys(data).forEach(key => {
     if (key.startsWith('No')) {
       const item = data[key];
       const timeStr = item.time || item.ReportTime;
       const timestamp = new Date(timeStr).getTime();
-      
-      // 日期筛选
-      const startDate = document.getElementById('start-date').value;
-      const endDate = document.getElementById('end-date').value;
-      
-      if (startDate && endDate) {
-        const startTime = new Date(startDate).getTime();
-        const endTime = new Date(endDate + 'T23:59:59').getTime();
-        if (timestamp < startTime || timestamp > endTime) return;
-      }
-      
+
+      // 不再这里进行日期筛选，保留所有数据，筛选在 filterAndDisplay 中进行
+
       earthquakes.push({
         id: item.EventID || key,
         mag: parseFloat(item.magnitude) || 0,
@@ -1232,7 +1339,7 @@ function parseWolfxData(data) {
       });
     }
   });
-  
+
   return earthquakes.sort((a, b) => b.time - a.time);
 }
 
@@ -1280,20 +1387,31 @@ function isDomestic(place) {
 function filterAndDisplay() {
   const minMag = parseFloat(document.getElementById('mag-min').value) || 0;
   const maxMag = parseFloat(document.getElementById('mag-max').value) || 10;
-  
+
+  // 获取日期范围
+  const startDateInput = document.getElementById('start-date');
+  const endDateInput = document.getElementById('end-date');
+  const startTime = startDateInput ? new Date(startDateInput.value).getTime() : 0;
+  const endTime = endDateInput ? new Date(endDateInput.value).getTime() + 24 * 60 * 60 * 1000 : Date.now();
+
   const filterByMag = (eq) => {
     const mag = eq.mag || 0;
     return mag >= minMag && mag <= maxMag;
   };
-  
+
+  const filterByDate = (eq) => {
+    const eqTime = new Date(eq.time || eq.timeStr).getTime();
+    return eqTime >= startTime && eqTime <= endTime;
+  };
+
   const allQuakes = [...state.earthquakes];
-  state.domesticQuakes = allQuakes.filter(eq => isDomestic(eq.place) && filterByMag(eq));
-  state.overseasQuakes = allQuakes.filter(eq => !isDomestic(eq.place) && filterByMag(eq));
-  
+  state.domesticQuakes = allQuakes.filter(eq => isDomestic(eq.place) && filterByMag(eq) && filterByDate(eq));
+  state.overseasQuakes = allQuakes.filter(eq => !isDomestic(eq.place) && filterByMag(eq) && filterByDate(eq));
+
   // 更新地球标记
   const allFiltered = [...state.domesticQuakes, ...state.overseasQuakes];
   updateGlobeMarkers(allFiltered);
-  
+
   displayQuakeList();
   updateStats();
 }
@@ -1523,19 +1641,70 @@ function updateStats() {
   const domestic = state.domesticQuakes.length;
   const overseas = state.overseasQuakes.length;
   const total = domestic + overseas;
-  
+
   const all = [...state.domesticQuakes, ...state.overseasQuakes];
   const maxMag = all.length > 0 ? Math.max(...all.map(e => e.mag || 0)) : 0;
   const avgMag = all.length > 0 ? all.reduce((a, b) => a + (b.mag || 0), 0) / all.length : 0;
   const avgDepth = all.length > 0 ? all.reduce((a, b) => a + (b.depth || 0), 0) / all.length : 0;
-  
+
   document.getElementById('stat-total').textContent = total;
   document.getElementById('stat-max').textContent = maxMag.toFixed(1);
   document.getElementById('stat-avg').textContent = avgMag.toFixed(1);
   document.getElementById('stat-depth').textContent = avgDepth.toFixed(0) + 'km';
-  
+
   document.getElementById('count-domestic').textContent = domestic;
   document.getElementById('count-overseas').textContent = overseas;
+
+  // 更新各时间范围的地震数量统计
+  updateTimeRangeCounts();
+}
+
+/**
+ * 更新各时间范围的地震数量统计（基于日期输入框的时间，考虑震级筛选）
+ */
+function updateTimeRangeCounts() {
+  const endDateInput = document.getElementById('end-date');
+  // 使用结束日期作为基准时间（通常是"今天"）
+  const baseTime = endDateInput && endDateInput.value 
+    ? new Date(endDateInput.value).getTime() + 24 * 60 * 60 * 1000 
+    : Date.now();
+  const oneDay = 24 * 60 * 60 * 1000;
+
+  // 获取当前震级筛选条件
+  const minMag = parseFloat(document.getElementById('mag-min').value) || 0;
+  const maxMag = parseFloat(document.getElementById('mag-max').value) || 10;
+
+  const filterByMag = (eq) => {
+    const mag = eq.mag || 0;
+    return mag >= minMag && mag <= maxMag;
+  };
+
+  // 计算过去24小时的地震数量（考虑震级筛选）
+  const dayCount = state.earthquakes.filter(eq => {
+    const eqTime = new Date(eq.time || eq.timeStr).getTime();
+    return (baseTime - eqTime <= oneDay) && filterByMag(eq);
+  }).length;
+
+  // 计算过去7天的地震数量（考虑震级筛选）
+  const weekCount = state.earthquakes.filter(eq => {
+    const eqTime = new Date(eq.time || eq.timeStr).getTime();
+    return (baseTime - eqTime <= 7 * oneDay) && filterByMag(eq);
+  }).length;
+
+  // 计算过去30天的地震数量（考虑震级筛选）
+  const monthCount = state.earthquakes.filter(eq => {
+    const eqTime = new Date(eq.time || eq.timeStr).getTime();
+    return (baseTime - eqTime <= 30 * oneDay) && filterByMag(eq);
+  }).length;
+
+  // 更新DOM
+  const dayEl = document.getElementById('count-day');
+  const weekEl = document.getElementById('count-week');
+  const monthEl = document.getElementById('count-month');
+
+  if (dayEl) dayEl.textContent = dayCount;
+  if (weekEl) weekEl.textContent = weekCount;
+  if (monthEl) monthEl.textContent = monthCount;
 }
 
 /**
