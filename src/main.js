@@ -19,12 +19,15 @@ const state = {
   chinaBorders: null
 };
 
-// API配置 - 使用本地代理避免 CORS 问题
-// 使用绝对路径确保在 Vercel 上正确解析
-const API_BASE = window.location.origin;
+// API配置 - 尝试直接调用（CORS 允许的情况下）
+// 如果直接调用失败，会使用备用方案
 const API_CONFIG = {
-  wolfx: `${API_BASE}/api/wolfx`,
-  usgs: `${API_BASE}/api/usgs`,
+  // 主方案：直接调用（需要目标服务器允许 CORS）
+  wolfxDirect: 'https://api.wolfx.jp/cenc_eqlist.json',
+  usgsDirect: 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson',
+  // 备用方案：Vercel 代理
+  wolfx: '/api/wolfx',
+  usgs: '/api/usgs',
   // 世界边界数据 (Natural Earth Data)
   worldBorders: 'https://raw.githubusercontent.com/georgique/world-geojson/master/countries/all.json',
   // 中国边界数据 - 使用 HTTPS
@@ -1145,50 +1148,57 @@ function getMockEarthquakeData() {
 }
 
 /**
- * 获取Wolfx数据
+ * 获取Wolfx数据（支持多源备用）
  */
 async function fetchWolfxData() {
   console.log('=== fetchWolfxData 开始 ===');
-  console.log('正在请求:', API_CONFIG.wolfx);
-  console.log('当前页面URL:', window.location.href);
   
-  let response;
+  // 方案1：直接调用（CORS 允许时最快）
   try {
-    response = await fetch(API_CONFIG.wolfx, {
+    console.log('尝试方案1：直接调用 Wolfx API');
+    const response = await fetch(API_CONFIG.wolfxDirect, {
       method: 'GET',
       headers: {
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (compatible; QuakeMonitor/1.0)'
       }
     });
-    console.log('响应状态:', response.status, response.statusText);
-    console.log('响应头:', [...response.headers.entries()]);
-  } catch (fetchError) {
-    console.error('Fetch 请求失败:', fetchError);
-    throw new Error(`网络请求失败: ${fetchError.message}`);
-  }
-  
-  if (!response.ok) {
-    let errorText;
-    try {
-      errorText = await response.text();
-    } catch (e) {
-      errorText = '无法读取错误响应';
+    
+    if (response.ok) {
+      const data = await response.json();
+      console.log('✅ 方案1成功, 条目数:', Object.keys(data).length);
+      return parseWolfxData(data);
     }
-    console.error('API 错误响应:', errorText);
-    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  } catch (error) {
+    console.warn('方案1失败:', error.message);
   }
   
-  let data;
+  // 方案2：通过 Vercel 代理
   try {
-    data = await response.json();
-  } catch (jsonError) {
-    console.error('JSON 解析失败:', jsonError);
-    const text = await response.text();
-    console.error('原始响应:', text.substring(0, 500));
-    throw new Error('数据解析失败');
+    console.log('尝试方案2：Vercel 代理');
+    const response = await fetch(API_CONFIG.wolfx, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      console.log('✅ 方案2成功, 条目数:', Object.keys(data).length);
+      return parseWolfxData(data);
+    }
+  } catch (error) {
+    console.warn('方案2失败:', error.message);
   }
   
-  console.log('获取数据成功, 条目数:', Object.keys(data).length);
+  // 都失败了
+  throw new Error('所有数据源均不可用');
+}
+
+/**
+ * 解析 Wolfx 数据
+ */
+function parseWolfxData(data) {
+  console.log('解析数据, 条目数:', Object.keys(data).length);
   const earthquakes = [];
   
   Object.keys(data).forEach(key => {
