@@ -20,9 +20,11 @@ const state = {
 };
 
 // API配置 - 使用本地代理避免 CORS 问题
+// 使用绝对路径确保在 Vercel 上正确解析
+const API_BASE = window.location.origin;
 const API_CONFIG = {
-  wolfx: '/api/wolfx',
-  usgs: '/api/usgs',
+  wolfx: `${API_BASE}/api/wolfx`,
+  usgs: `${API_BASE}/api/usgs`,
   // 世界边界数据 (Natural Earth Data)
   worldBorders: 'https://raw.githubusercontent.com/georgique/world-geojson/master/countries/all.json',
   // 中国边界数据 - 使用 HTTPS
@@ -1058,7 +1060,7 @@ async function loadEarthquakeData() {
     classifyQuakes();
     filterAndDisplay();
     updateStats();
-    showError('使用离线数据展示（实时数据暂时不可用）');
+    showError(`API错误: ${error.message}（使用离线数据）`);
   } finally {
     showLoading(false);
   }
