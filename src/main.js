@@ -16,8 +16,16 @@ const state = {
   isLoading: false,
   refreshInterval: null,
   worldBorders: null,
-  chinaBorders: null
+  chinaBorders: null,
+  isMobile: false,
+  isDetailOpen: false,  // 标记详情弹窗是否打开
+  autoRotateTimeout: null  // 自动旋转恢复计时器
 };
+
+// 检测是否为移动端
+function checkMobile() {
+  return window.innerWidth <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
 
 // API配置 - 尝试直接调用（CORS 允许的情况下）
 // 如果直接调用失败，会使用备用方案
@@ -81,14 +89,23 @@ async function init() {
 }
 
 /**
- * 设置默认日期
+ * 设置默认日期（默认7天）
  */
 function setDefaultDates() {
   const today = new Date();
-  const yesterday = new Date(today - 24 * 60 * 60 * 1000);
-  
-  document.getElementById('end-date').value = formatDate(today);
-  document.getElementById('start-date').value = formatDate(yesterday);
+  const weekAgo = new Date(today - 7 * 24 * 60 * 60 * 1000);
+
+  // 桌面端
+  const endDate = document.getElementById('end-date');
+  const startDate = document.getElementById('start-date');
+  if (endDate) endDate.value = formatDate(today);
+  if (startDate) startDate.value = formatDate(weekAgo);
+
+  // 移动端
+  const mobileEndDate = document.getElementById('mobile-end-date');
+  const mobileStartDate = document.getElementById('mobile-start-date');
+  if (mobileEndDate) mobileEndDate.value = formatDate(today);
+  if (mobileStartDate) mobileStartDate.value = formatDate(weekAgo);
 }
 
 function formatDate(date) {
@@ -285,26 +302,28 @@ async function initGlobe() {
   controls.autoRotate = true;
   controls.autoRotateSpeed = 0.5;
 
-  // 自动旋转控制：拖动后5秒停止，5秒后恢复
-  let autoRotateTimeout = null;
-
+  // 自动旋转控制：拖动后停止，5秒后恢复（但详情弹窗打开时不恢复）
   // 监听控制器变化（拖动时）
   controls.addEventListener('start', () => {
     // 开始拖动时停止自动旋转
     controls.autoRotate = false;
     // 清除之前的计时器
-    if (autoRotateTimeout) {
-      clearTimeout(autoRotateTimeout);
-      autoRotateTimeout = null;
+    if (state.autoRotateTimeout) {
+      clearTimeout(state.autoRotateTimeout);
+      state.autoRotateTimeout = null;
     }
   });
 
   controls.addEventListener('end', () => {
-    // 停止拖动后，5秒后恢复自动旋转
-    autoRotateTimeout = setTimeout(() => {
-      controls.autoRotate = true;
-      autoRotateTimeout = null;
-    }, 5000);
+    // 停止拖动后，5秒后恢复自动旋转（但详情弹窗打开时不恢复）
+    if (!state.isDetailOpen) {
+      state.autoRotateTimeout = setTimeout(() => {
+        if (!state.isDetailOpen && state.globe && state.globe.controls) {
+          state.globe.controls.autoRotate = true;
+        }
+        state.autoRotateTimeout = null;
+      }, 5000);
+    }
   });
 
   // 地球组
@@ -740,14 +759,18 @@ function setupGlobeInteractions(container, camera, earth, controls) {
     if (intersects.length > 0) {
       const clicked = intersects[0].object;
       const eq = clicked.userData.eq;
-      
+
       if (eq) {
         controls.autoRotate = false;
-        showDetail(eq);
-        flyToLocation(eq.latitude, eq.longitude, 2);
-        setTimeout(() => {
-          controls.autoRotate = true;
-        }, 5000);
+        const isMobile = checkMobile();
+        // 移动端使用底部详情弹窗，桌面端使用浮动弹窗
+        if (isMobile) {
+          showMobileDetail(eq);
+        } else {
+          showDetail(eq);
+        }
+        // 调整相机位置，使震中点不被详情遮挡
+        flyToLocationWithOffset(eq.latitude, eq.longitude, 2.2, isMobile);
       }
     }
   });
@@ -1030,79 +1053,166 @@ function updateMarkerSizes(camera, container) {
  */
 function flyToLocation(lat, lng, zoom = 2.5) {
   if (!state.globe) return;
-  
+
   const pos = latLngToVector3(lat, lng, zoom);
-  
+
   const startPos = state.globe.camera.position.clone();
   const endPos = pos;
-  
+
   let progress = 0;
   const duration = 1200;
   const startTime = Date.now();
-  
+
   state.globe.controls.autoRotate = false;
-  
+
   function animate() {
     const elapsed = Date.now() - startTime;
     progress = Math.min(elapsed / duration, 1);
-    
+
     const ease = 1 - Math.pow(1 - progress, 4);
-    
+
     state.globe.camera.position.lerpVectors(startPos, endPos, ease);
     state.globe.camera.lookAt(0, 0, 0);
-    
+
     if (progress < 1) {
       requestAnimationFrame(animate);
-    } else {
-      setTimeout(() => {
-        if (state.globe) state.globe.controls.autoRotate = true;
-      }, 3000);
     }
   }
   animate();
 }
 
 /**
+ * 飞行到指定位置（带偏移，使震中点不被详情弹窗遮挡）
+ * @param {number} lat - 纬度
+ * @param {number} lng - 经度
+ * @param {number} zoom - 缩放级别
+ * @param {boolean} isMobile - 是否为移动端
+ */
+function flyToLocationWithOffset(lat, lng, zoom = 2.2, isMobile = true) {
+  if (!state.globe) return;
+
+  // 计算震中点的球坐标
+  const phi = (90 - lat) * (Math.PI / 180);
+  const theta = (lng + 180) * (Math.PI / 180);
+
+  let endPos;
+
+  if (isMobile) {
+    // 移动端：详情弹窗从底部弹出（占下半屏）
+    // 需要将相机向下偏移，这样震中点会出现在屏幕上半部分
+    // 相机向下偏移（phi增加），看向地球时，目标点会移向视野上方
+    const offsetPhi = phi + 0.45; // 向下偏移约25度
+
+    const x = -(Math.sin(offsetPhi) * Math.cos(theta)) * zoom;
+    const z = Math.sin(offsetPhi) * Math.sin(theta) * zoom;
+    const y = Math.cos(offsetPhi) * zoom;
+
+    endPos = new THREE.Vector3(x, y, z);
+  } else {
+    // PC端：详情弹窗在中间，右侧面板有列表
+    // 需要将相机向左偏移，这样震中点会出现在屏幕左侧，不被右侧列表遮挡
+    const offsetTheta = theta + 0.35; // 向左偏移约20度
+
+    const x = -(Math.sin(phi) * Math.cos(offsetTheta)) * zoom;
+    const z = Math.sin(phi) * Math.sin(offsetTheta) * zoom;
+    const y = Math.cos(phi) * zoom;
+
+    endPos = new THREE.Vector3(x, y, z);
+  }
+
+  const startPos = state.globe.camera.position.clone();
+
+  let progress = 0;
+  const duration = 1200;
+  const startTime = Date.now();
+
+  // 停止自动旋转
+  state.globe.controls.autoRotate = false;
+
+  function animate() {
+    const elapsed = Date.now() - startTime;
+    progress = Math.min(elapsed / duration, 1);
+
+    const ease = 1 - Math.pow(1 - progress, 4);
+
+    state.globe.camera.position.lerpVectors(startPos, endPos, ease);
+    state.globe.camera.lookAt(0, 0, 0);
+
+    if (progress < 1) {
+      requestAnimationFrame(animate);
+    }
+  }
+  animate();
+}
+
+/**
+ * 恢复地球自动旋转
+ */
+function resumeAutoRotate() {
+  if (state.globe && state.globe.controls) {
+    state.globe.controls.autoRotate = true;
+  }
+}
+
+/**
  * 绑定事件
  */
 function bindEvents() {
-  // 快捷筛选
+  state.isMobile = checkMobile();
+
+  // 桌面端：快捷筛选
   document.querySelectorAll('.quick-filter-item').forEach(item => {
     item.addEventListener('click', () => {
       document.querySelectorAll('.quick-filter-item').forEach(i => i.classList.remove('active'));
       item.classList.add('active');
-      
+
       // 根据选择的类型更新日期范围
       const period = item.dataset.period;
       updateDateRangeByPeriod(period);
-      
+
       loadEarthquakeData();
     });
   });
-  
-  // 日期筛选
-  document.getElementById('apply-filter').addEventListener('click', loadEarthquakeData);
-  document.getElementById('reset-filter').addEventListener('click', () => {
-    setDefaultDates();
-    document.querySelectorAll('.quick-filter-item').forEach(i => i.classList.remove('active'));
-    document.querySelector('[data-period="day"]').classList.add('active');
-    loadEarthquakeData();
-  });
-  
-  // 震级筛选
-  document.getElementById('mag-min').addEventListener('change', () => {
-    updateTimeRangeCounts(); // 更新左边时间范围统计
-    filterAndDisplay();
-  });
-  document.getElementById('mag-max').addEventListener('change', () => {
-    updateTimeRangeCounts(); // 更新左边时间范围统计
-    filterAndDisplay();
-  });
-  
-  // 刷新按钮
-  document.getElementById('refresh-btn').addEventListener('click', refreshData);
-  
-  // Tab切换
+
+  // 桌面端：日期筛选
+  const applyFilterBtn = document.getElementById('apply-filter');
+  const resetFilterBtn = document.getElementById('reset-filter');
+  if (applyFilterBtn) {
+    applyFilterBtn.addEventListener('click', loadEarthquakeData);
+  }
+  if (resetFilterBtn) {
+    resetFilterBtn.addEventListener('click', () => {
+      setDefaultDates();
+      document.querySelectorAll('.quick-filter-item').forEach(i => i.classList.remove('active'));
+      const weekFilter = document.querySelector('[data-period="week"]');
+      if (weekFilter) weekFilter.classList.add('active');
+      loadEarthquakeData();
+    });
+  }
+
+  // 桌面端：震级筛选
+  const magMin = document.getElementById('mag-min');
+  const magMax = document.getElementById('mag-max');
+  if (magMin) {
+    magMin.addEventListener('change', () => {
+      updateTimeRangeCounts();
+      filterAndDisplay();
+    });
+  }
+  if (magMax) {
+    magMax.addEventListener('change', () => {
+      updateTimeRangeCounts();
+      filterAndDisplay();
+    });
+  }
+
+  // 桌面端：刷新按钮
+  const refreshBtn = document.getElementById('refresh-btn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', refreshData);
+  }
+
+  // 桌面端：Tab切换
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -1111,42 +1221,285 @@ function bindEvents() {
       displayQuakeList();
     });
   });
-  
-  // 排序
-  document.getElementById('sort-select').addEventListener('change', (e) => {
-    state.currentSort = e.target.value;
-    displayQuakeList();
-  });
-  
-  // 详情弹窗关闭
-  document.getElementById('detail-close').addEventListener('click', closeDetail);
-  document.getElementById('overlay').addEventListener('click', closeDetail);
+
+  // 桌面端：排序
+  const sortSelect = document.getElementById('sort-select');
+  if (sortSelect) {
+    sortSelect.addEventListener('change', (e) => {
+      state.currentSort = e.target.value;
+      displayQuakeList();
+    });
+  }
+
+  // 桌面端：详情弹窗关闭
+  const detailClose = document.getElementById('detail-close');
+  const overlay = document.getElementById('overlay');
+  if (detailClose) {
+    detailClose.addEventListener('click', closeDetail);
+  }
+  if (overlay) {
+    overlay.addEventListener('click', closeDetail);
+  }
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeDetail();
   });
-  
+
   // 地图控制
-  document.getElementById('map-zoom-in').addEventListener('click', () => {
-    if (state.globe) {
-      const current = state.globe.camera.position.length();
-      const target = Math.max(1.3, current * 0.85);
-      state.globe.camera.position.setLength(target);
+  const zoomInBtn = document.getElementById('map-zoom-in');
+  const zoomOutBtn = document.getElementById('map-zoom-out');
+  const resetBtn = document.getElementById('map-reset');
+
+  if (zoomInBtn) {
+    zoomInBtn.addEventListener('click', () => {
+      if (state.globe) {
+        const current = state.globe.camera.position.length();
+        const target = Math.max(1.3, current * 0.85);
+        state.globe.camera.position.setLength(target);
+      }
+    });
+  }
+
+  if (zoomOutBtn) {
+    zoomOutBtn.addEventListener('click', () => {
+      if (state.globe) {
+        const current = state.globe.camera.position.length();
+        const target = Math.min(5, current * 1.15);
+        state.globe.camera.position.setLength(target);
+      }
+    });
+  }
+
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      if (state.globe) {
+        flyToLocation(35, 105, 3.2);
+      }
+    });
+  }
+
+  // 绑定移动端事件
+  bindMobileEvents();
+
+  // 窗口大小变化时重新检测
+  window.addEventListener('resize', () => {
+    const newIsMobile = checkMobile();
+    if (newIsMobile !== state.isMobile) {
+      state.isMobile = newIsMobile;
+      location.reload();
     }
   });
-  
-  document.getElementById('map-zoom-out').addEventListener('click', () => {
-    if (state.globe) {
-      const current = state.globe.camera.position.length();
-      const target = Math.min(5, current * 1.15);
-      state.globe.camera.position.setLength(target);
-    }
+}
+
+/**
+ * 绑定移动端事件
+ */
+function bindMobileEvents() {
+  // 移动端：菜单按钮
+  const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+  const mobileDrawer = document.getElementById('mobile-drawer');
+  const mobileDrawerOverlay = document.getElementById('mobile-drawer-overlay');
+  const mobileDrawerClose = document.getElementById('mobile-drawer-close');
+
+  if (mobileMenuBtn) {
+    mobileMenuBtn.addEventListener('click', () => {
+      mobileDrawer.classList.add('open');
+      mobileDrawerOverlay.classList.add('open');
+    });
+  }
+
+  if (mobileDrawerClose) {
+    mobileDrawerClose.addEventListener('click', closeMobileDrawer);
+  }
+
+  if (mobileDrawerOverlay) {
+    mobileDrawerOverlay.addEventListener('click', closeMobileDrawer);
+  }
+
+  // 移动端：时间筛选（快捷按钮）
+  document.querySelectorAll('.mobile-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.mobile-filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      const period = btn.dataset.period;
+      updateDateRangeByPeriod(period);
+
+      // 同步更新日期选择器
+      syncMobileDates();
+      loadEarthquakeData();
+    });
   });
-  
-  document.getElementById('map-reset').addEventListener('click', () => {
-    if (state.globe) {
-      flyToLocation(35, 105, 3.2);
-    }
+
+  // 移动端：日期选择器
+  const mobileStartDate = document.getElementById('mobile-start-date');
+  const mobileEndDate = document.getElementById('mobile-end-date');
+  const mobileApplyFilter = document.getElementById('mobile-apply-filter');
+
+  if (mobileStartDate && mobileEndDate) {
+    // 初始化日期值
+    const today = new Date();
+    const yesterday = new Date(today - 24 * 60 * 60 * 1000);
+    mobileEndDate.value = formatDate(today);
+    mobileStartDate.value = formatDate(yesterday);
+
+    mobileStartDate.addEventListener('change', () => {
+      // 同步到桌面端
+      const desktopStart = document.getElementById('start-date');
+      if (desktopStart) desktopStart.value = mobileStartDate.value;
+      // 取消快捷按钮选中状态
+      document.querySelectorAll('.mobile-filter-btn').forEach(b => b.classList.remove('active'));
+    });
+
+    mobileEndDate.addEventListener('change', () => {
+      // 同步到桌面端
+      const desktopEnd = document.getElementById('end-date');
+      if (desktopEnd) desktopEnd.value = mobileEndDate.value;
+      // 取消快捷按钮选中状态
+      document.querySelectorAll('.mobile-filter-btn').forEach(b => b.classList.remove('active'));
+    });
+  }
+
+  if (mobileApplyFilter) {
+    mobileApplyFilter.addEventListener('click', () => {
+      loadEarthquakeData();
+      closeMobileDrawer();
+    });
+  }
+
+  // 移动端：重置按钮
+  const mobileResetFilter = document.getElementById('mobile-reset-filter');
+  if (mobileResetFilter) {
+    mobileResetFilter.addEventListener('click', () => {
+      setDefaultDates();
+      document.querySelectorAll('.mobile-filter-btn').forEach(b => b.classList.remove('active'));
+      const weekFilter = document.querySelector('.mobile-filter-btn[data-period="week"]');
+      if (weekFilter) weekFilter.classList.add('active');
+      loadEarthquakeData();
+    });
+  }
+
+  // 移动端：震级筛选
+  const mobileMagMin = document.getElementById('mobile-mag-min');
+  const mobileMagMax = document.getElementById('mobile-mag-max');
+
+  if (mobileMagMin) {
+    mobileMagMin.addEventListener('change', () => {
+      const desktopMagMin = document.getElementById('mag-min');
+      if (desktopMagMin) desktopMagMin.value = mobileMagMin.value;
+      filterAndDisplay();
+    });
+  }
+
+  if (mobileMagMax) {
+    mobileMagMax.addEventListener('change', () => {
+      const desktopMagMax = document.getElementById('mag-max');
+      if (desktopMagMax) desktopMagMax.value = mobileMagMax.value;
+      filterAndDisplay();
+    });
+  }
+
+  // 移动端：底部列表按钮
+  const mobileListBtn = document.getElementById('mobile-list-btn');
+  const mobileBottomSheet = document.getElementById('mobile-bottom-sheet');
+
+  if (mobileListBtn) {
+    mobileListBtn.addEventListener('click', () => {
+      mobileBottomSheet.classList.add('open');
+    });
+  }
+
+  // 移动端：底部面板关闭
+  const mobileSheetClose = document.getElementById('mobile-sheet-close');
+  if (mobileSheetClose) {
+    mobileSheetClose.addEventListener('click', () => {
+      mobileBottomSheet.classList.remove('open');
+    });
+  }
+
+  // 移动端：Tab切换
+  document.querySelectorAll('.mobile-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.mobile-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.currentTab = btn.dataset.tab;
+      displayQuakeList();
+    });
   });
+
+  // 移动端：排序
+  const mobileSortSelect = document.getElementById('mobile-sort-select');
+  if (mobileSortSelect) {
+    mobileSortSelect.addEventListener('change', (e) => {
+      state.currentSort = e.target.value;
+      displayQuakeList();
+    });
+  }
+
+  // 移动端：详情弹窗关闭
+  const mobileDetailClose = document.getElementById('mobile-detail-close');
+  const mobileDetailOverlay = document.getElementById('mobile-detail-popup-overlay');
+  const mobileDetailBack = document.getElementById('mobile-detail-back');
+
+  if (mobileDetailClose) {
+    mobileDetailClose.addEventListener('click', closeMobileDetail);
+  }
+
+  if (mobileDetailOverlay) {
+    mobileDetailOverlay.addEventListener('click', closeMobileDetail);
+  }
+
+  // 移动端：详情返回按钮 - 返回地震列表
+  if (mobileDetailBack) {
+    mobileDetailBack.addEventListener('click', () => {
+      closeMobileDetail();
+      // 打开地震列表
+      const mobileBottomSheet = document.getElementById('mobile-bottom-sheet');
+      if (mobileBottomSheet) {
+        mobileBottomSheet.classList.add('open');
+      }
+    });
+  }
+}
+
+/**
+ * 同步移动端日期选择器与桌面端
+ */
+function syncMobileDates() {
+  const mobileStartDate = document.getElementById('mobile-start-date');
+  const mobileEndDate = document.getElementById('mobile-end-date');
+  const desktopStartDate = document.getElementById('start-date');
+  const desktopEndDate = document.getElementById('end-date');
+
+  if (mobileStartDate && desktopStartDate) {
+    mobileStartDate.value = desktopStartDate.value;
+  }
+  if (mobileEndDate && desktopEndDate) {
+    mobileEndDate.value = desktopEndDate.value;
+  }
+}
+
+/**
+ * 关闭移动端抽屉
+ */
+function closeMobileDrawer() {
+  const mobileDrawer = document.getElementById('mobile-drawer');
+  const mobileDrawerOverlay = document.getElementById('mobile-drawer-overlay');
+  if (mobileDrawer) mobileDrawer.classList.remove('open');
+  if (mobileDrawerOverlay) mobileDrawerOverlay.classList.remove('open');
+}
+
+/**
+ * 关闭移动端详情弹窗
+ */
+function closeMobileDetail() {
+  const mobileDetailPopup = document.getElementById('mobile-detail-popup');
+  const mobileDetailOverlay = document.getElementById('mobile-detail-popup-overlay');
+  if (mobileDetailPopup) mobileDetailPopup.classList.remove('open');
+  if (mobileDetailOverlay) mobileDetailOverlay.classList.remove('open');
+  state.selectedId = null;
+  state.isDetailOpen = false;
+  // 恢复地球自动旋转
+  resumeAutoRotate();
 }
 
 /**
@@ -1349,7 +1702,7 @@ function parseWolfxData(data) {
 function classifyQuakes() {
   state.domesticQuakes = [];
   state.overseasQuakes = [];
-  
+
   state.earthquakes.forEach(eq => {
     if (isDomestic(eq.place)) {
       state.domesticQuakes.push(eq);
@@ -1357,9 +1710,18 @@ function classifyQuakes() {
       state.overseasQuakes.push(eq);
     }
   });
-  
-  document.getElementById('count-domestic').textContent = state.domesticQuakes.length;
-  document.getElementById('count-overseas').textContent = state.overseasQuakes.length;
+
+  // 桌面端计数
+  const countDomestic = document.getElementById('count-domestic');
+  const countOverseas = document.getElementById('count-overseas');
+  if (countDomestic) countDomestic.textContent = state.domesticQuakes.length;
+  if (countOverseas) countOverseas.textContent = state.overseasQuakes.length;
+
+  // 移动端计数
+  const mobileCountDomestic = document.getElementById('mobile-count-domestic');
+  const mobileCountOverseas = document.getElementById('mobile-count-overseas');
+  if (mobileCountDomestic) mobileCountDomestic.textContent = state.domesticQuakes.length;
+  if (mobileCountOverseas) mobileCountOverseas.textContent = state.overseasQuakes.length;
 }
 
 /**
@@ -1385,8 +1747,20 @@ function isDomestic(place) {
  * 筛选并显示
  */
 function filterAndDisplay() {
-  const minMag = parseFloat(document.getElementById('mag-min').value) || 0;
-  const maxMag = parseFloat(document.getElementById('mag-max').value) || 10;
+  // 获取震级范围（优先使用移动端输入，如果不存在则使用桌面端）
+  const mobileMagMin = document.getElementById('mobile-mag-min');
+  const mobileMagMax = document.getElementById('mobile-mag-max');
+  const desktopMagMin = document.getElementById('mag-min');
+  const desktopMagMax = document.getElementById('mag-max');
+
+  const minMag = parseFloat(mobileMagMin?.value ?? desktopMagMin?.value ?? 0) || 0;
+  const maxMag = parseFloat(mobileMagMax?.value ?? desktopMagMax?.value ?? 10) || 10;
+
+  // 同步震级值
+  if (mobileMagMin && desktopMagMin) mobileMagMin.value = desktopMagMin.value;
+  if (mobileMagMax && desktopMagMax) mobileMagMax.value = desktopMagMax.value;
+  if (desktopMagMin && mobileMagMin) desktopMagMin.value = mobileMagMin.value;
+  if (desktopMagMax && mobileMagMax) desktopMagMax.value = mobileMagMax.value;
 
   // 获取日期范围
   const startDateInput = document.getElementById('start-date');
@@ -1420,12 +1794,10 @@ function filterAndDisplay() {
  * 显示地震列表
  */
 function displayQuakeList() {
-  const panel = document.getElementById('latest-quakes-panel');
-  
-  let data = state.currentTab === 'domestic' 
-    ? [...state.domesticQuakes] 
+  let data = state.currentTab === 'domestic'
+    ? [...state.domesticQuakes]
     : [...state.overseasQuakes];
-  
+
   // 排序
   data.sort((a, b) => {
     switch (state.currentSort) {
@@ -1436,61 +1808,119 @@ function displayQuakeList() {
       default: return b.time - a.time;
     }
   });
-  
-  document.getElementById('total-quakes').textContent = data.length;
-  
-  if (data.length === 0) {
-    panel.innerHTML = '<div style="padding: 40px; text-align: center; color: rgba(255,255,255,0.4);">暂无数据</div>';
-    return;
+
+  // 桌面端列表
+  const panel = document.getElementById('latest-quakes-panel');
+  if (panel) {
+    const totalQuakesEl = document.getElementById('total-quakes');
+    if (totalQuakesEl) totalQuakesEl.textContent = data.length;
+
+    if (data.length === 0) {
+      panel.innerHTML = '<div style="padding: 40px; text-align: center; color: rgba(255,255,255,0.4);">暂无数据</div>';
+    } else {
+      panel.innerHTML = data.map((eq, index) => {
+        const magColor = getMagColor(eq.mag);
+        const isRecent = (Date.now() - eq.time) < 60 * 60 * 1000;
+        const timeDisplay = formatTime(eq.time);
+        const province = extractProvince(eq.place);
+        const isDomestic = state.currentTab === 'domestic';
+
+        return `
+          <div class="latest-quake-item ${index < 3 ? 'highlight' : ''} ${state.selectedId === eq.id ? 'active' : ''}"
+               data-id="${eq.id}"
+               style="animation-delay: ${index * 0.05}s">
+            <div class="latest-quake-rank">${index + 1}</div>
+            <div class="latest-quake-content">
+              <div class="latest-quake-header">
+                <div class="latest-quake-place" title="${eq.place}">
+                  ${isDomestic ? `<span class="province-tag">${province}</span>` : ''}
+                  ${eq.place}
+                </div>
+                <div class="latest-quake-mag" style="color: ${magColor}">
+                  M${eq.mag.toFixed(1)}
+                </div>
+              </div>
+              <div class="latest-quake-bar">
+                <div class="latest-quake-bar-fill" style="width: ${Math.min(100, (eq.mag / 8) * 100)}%; background: ${magColor};"></div>
+              </div>
+              <div class="latest-quake-meta">
+                <span class="latest-quake-time ${isRecent ? 'recent' : ''}">${timeDisplay}</span>
+                <span>深度 ${eq.depth.toFixed(0)}km</span>
+              </div>
+            </div>
+            <div class="latest-quake-glow" style="background: radial-gradient(circle at center, ${magColor}15, transparent 70%);"></div>
+          </div>
+        `;
+      }).join('');
+
+      // 绑定桌面端点击事件
+      panel.querySelectorAll('.latest-quake-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const id = item.dataset.id;
+          const allQuakes = [...state.domesticQuakes, ...state.overseasQuakes];
+          const eq = allQuakes.find(e => e.id === id);
+          if (eq) {
+            showDetail(eq);
+            // 调整相机位置（PC端偏移），使震中点不被右侧列表面板遮挡
+            flyToLocationWithOffset(eq.latitude, eq.longitude, 2.2, false);
+          }
+        });
+      });
+    }
   }
-  
-  panel.innerHTML = data.map((eq, index) => {
-    const magColor = getMagColor(eq.mag);
-    const isRecent = (Date.now() - eq.time) < 60 * 60 * 1000;
-    const timeDisplay = formatTime(eq.time);
-    const province = extractProvince(eq.place);
-    const isDomestic = state.currentTab === 'domestic';
-    
-    return `
-      <div class="latest-quake-item ${index < 3 ? 'highlight' : ''} ${state.selectedId === eq.id ? 'active' : ''}" 
-           data-id="${eq.id}" 
-           style="animation-delay: ${index * 0.05}s">
-        <div class="latest-quake-rank">${index + 1}</div>
-        <div class="latest-quake-content">
-          <div class="latest-quake-header">
-            <div class="latest-quake-place" title="${eq.place}">
-              ${isDomestic ? `<span class="province-tag">${province}</span>` : ''}
-              ${eq.place}
+
+  // 移动端列表
+  const mobileList = document.getElementById('mobile-quakes-list');
+  if (mobileList) {
+    const mobileTotalEl = document.getElementById('mobile-total-quakes');
+    const mobileBadgeEl = document.getElementById('mobile-total-badge');
+    if (mobileTotalEl) mobileTotalEl.textContent = data.length;
+    if (mobileBadgeEl) mobileBadgeEl.textContent = data.length;
+
+    if (data.length === 0) {
+      mobileList.innerHTML = '<div style="padding: 40px; text-align: center; color: rgba(255,255,255,0.4);">暂无数据</div>';
+    } else {
+      mobileList.innerHTML = data.map((eq, index) => {
+        const magColor = getMagColor(eq.mag);
+        const isRecent = (Date.now() - eq.time) < 60 * 60 * 1000;
+        const timeDisplay = formatTime(eq.time);
+
+        return `
+          <div class="mobile-quake-item ${state.selectedId === eq.id ? 'active' : ''}"
+               data-id="${eq.id}"
+               style="animation-delay: ${index * 0.05}s">
+            <div class="mobile-quake-mag" style="background: ${magColor}20; color: ${magColor}; border: 1px solid ${magColor}40;">
+              ${eq.mag.toFixed(1)}
             </div>
-            <div class="latest-quake-mag" style="color: ${magColor}">
-              M${eq.mag.toFixed(1)}
+            <div class="mobile-quake-info">
+              <div class="mobile-quake-place" title="${eq.place}">${eq.place}</div>
+              <div class="mobile-quake-meta">
+                <span class="mobile-quake-time ${isRecent ? 'recent' : ''}">${timeDisplay}</span>
+                <span>深度 ${eq.depth.toFixed(0)}km</span>
+              </div>
             </div>
           </div>
-          <div class="latest-quake-bar">
-            <div class="latest-quake-bar-fill" style="width: ${Math.min(100, (eq.mag / 8) * 100)}%; background: ${magColor};"></div>
-          </div>
-          <div class="latest-quake-meta">
-            <span class="latest-quake-time ${isRecent ? 'recent' : ''}">${timeDisplay}</span>
-            <span>深度 ${eq.depth.toFixed(0)}km</span>
-          </div>
-        </div>
-        <div class="latest-quake-glow" style="background: radial-gradient(circle at center, ${magColor}15, transparent 70%);"></div>
-      </div>
-    `;
-  }).join('');
-  
-  // 绑定点击事件
-  panel.querySelectorAll('.latest-quake-item').forEach(item => {
-    item.addEventListener('click', () => {
-      const id = item.dataset.id;
-      const allQuakes = [...state.domesticQuakes, ...state.overseasQuakes];
-      const eq = allQuakes.find(e => e.id === id);
-      if (eq) {
-        showDetail(eq);
-        flyToLocation(eq.latitude, eq.longitude, 2.5);
-      }
-    });
-  });
+        `;
+      }).join('');
+
+      // 绑定移动端点击事件
+      mobileList.querySelectorAll('.mobile-quake-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const id = item.dataset.id;
+          const allQuakes = [...state.domesticQuakes, ...state.overseasQuakes];
+          const eq = allQuakes.find(e => e.id === id);
+          if (eq) {
+            showMobileDetail(eq);
+            // 调整相机位置（移动端偏移），使震中点不被详情遮挡
+            flyToLocationWithOffset(eq.latitude, eq.longitude, 2.2, true);
+            // 关闭底部面板
+            const mobileBottomSheet = document.getElementById('mobile-bottom-sheet');
+            if (mobileBottomSheet) mobileBottomSheet.classList.remove('open');
+          }
+        });
+      });
+    }
+  }
 }
 
 /**
@@ -1537,88 +1967,206 @@ function extractProvince(place) {
 }
 
 /**
- * 显示详情
+ * 显示详情（桌面端）
  */
 function showDetail(eq) {
   state.selectedId = eq.id;
-  
+
   document.querySelectorAll('.latest-quake-item').forEach(item => {
     item.classList.toggle('active', item.dataset.id === eq.id);
   });
-  
+
   const magColor = getMagColor(eq.mag);
   const timeStr = new Date(eq.time).toLocaleString('zh-CN');
   const province = extractProvince(eq.place);
   const isDomestic = isDomesticQuake(eq.place);
-  
+
   const detailBody = document.getElementById('detail-body');
-  detailBody.innerHTML = `
-    <div class="detail-mag-section">
-      <div class="detail-mag-value" style="color: ${magColor}">${eq.mag.toFixed(1)}</div>
-      <div class="detail-mag-type">${getMagLabel(eq.mag)}地震</div>
-      <div class="detail-mag-desc">${getMagDesc(eq.mag)}</div>
-    </div>
-    
-    <div class="detail-info-grid">
-      <div class="detail-info-item">
-        <div class="detail-info-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+  if (detailBody) {
+    detailBody.innerHTML = `
+      <div class="detail-mag-section">
+        <div class="detail-mag-value" style="color: ${magColor}">${eq.mag.toFixed(1)}</div>
+        <div class="detail-mag-type">${getMagLabel(eq.mag)}地震</div>
+        <div class="detail-mag-desc">${getMagDesc(eq.mag)}</div>
+      </div>
+
+      <div class="detail-info-grid">
+        <div class="detail-info-item">
+          <div class="detail-info-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+              <circle cx="12" cy="10" r="3"/>
+            </svg>
+          </div>
+          <div class="detail-info-content">
+            <div class="detail-info-label">震中位置</div>
+            <div class="detail-info-value">
+              ${isDomestic ? `<span class="province-tag" style="display: inline-block; margin-right: 8px;">${province}</span>` : ''}
+              ${eq.place}
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-info-item">
+          <div class="detail-info-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+              <path d="M2 12h20"/>
+            </svg>
+          </div>
+          <div class="detail-info-content">
+            <div class="detail-info-label">经纬度</div>
+            <div class="detail-info-value">${eq.latitude.toFixed(4)}, ${eq.longitude.toFixed(4)}</div>
+          </div>
+        </div>
+
+        <div class="detail-info-item">
+          <div class="detail-info-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L12 22M12 22L18 16M12 22L6 16"/>
+            </svg>
+          </div>
+          <div class="detail-info-content">
+            <div class="detail-info-label">震源深度</div>
+            <div class="detail-info-value">${eq.depth.toFixed(1)} 公里</div>
+          </div>
+        </div>
+
+        <div class="detail-info-item">
+          <div class="detail-info-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
+          <div class="detail-info-content">
+            <div class="detail-info-label">发震时刻</div>
+            <div class="detail-info-value">${timeStr}</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const detailPopup = document.getElementById('detail-popup');
+    const overlay = document.getElementById('overlay');
+    if (detailPopup) detailPopup.classList.add('open');
+    if (overlay) overlay.classList.add('show');
+  }
+
+  // 停止地球自动旋转
+  if (state.globe && state.globe.controls) {
+    state.globe.controls.autoRotate = false;
+  }
+}
+
+/**
+ * 显示移动端详情
+ */
+function showMobileDetail(eq) {
+  state.selectedId = eq.id;
+
+  document.querySelectorAll('.mobile-quake-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.id === eq.id);
+  });
+
+  const magColor = getMagColor(eq.mag);
+  const timeStr = new Date(eq.time).toLocaleString('zh-CN');
+  const province = extractProvince(eq.place);
+  const isDomestic = isDomesticQuake(eq.place);
+
+  const mobileDetailBody = document.getElementById('mobile-detail-body');
+  if (mobileDetailBody) {
+    mobileDetailBody.innerHTML = `
+      <div class="mobile-detail-mag">
+        <div class="mobile-detail-mag-value" style="color: ${magColor}">${eq.mag.toFixed(1)}</div>
+        <div class="mobile-detail-mag-type">${getMagLabel(eq.mag)}地震</div>
+      </div>
+
+      <div class="mobile-detail-info-item">
+        <div class="mobile-detail-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
             <circle cx="12" cy="10" r="3"/>
           </svg>
         </div>
-        <div class="detail-info-content">
-          <div class="detail-info-label">震中位置</div>
-          <div class="detail-info-value">
-            ${isDomestic ? `<span class="province-tag" style="display: inline-block; margin-right: 8px;">${province}</span>` : ''}
+        <div class="mobile-detail-content">
+          <div class="mobile-detail-label">震中位置</div>
+          <div class="mobile-detail-value">
+            ${isDomestic ? `<span style="color: #00d9a5;">${province}</span> ` : ''}
             ${eq.place}
           </div>
         </div>
       </div>
-      
-      <div class="detail-info-item">
-        <div class="detail-info-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+
+      <div class="mobile-detail-info-item">
+        <div class="mobile-detail-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"/>
             <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
             <path d="M2 12h20"/>
           </svg>
         </div>
-        <div class="detail-info-content">
-          <div class="detail-info-label">经纬度</div>
-          <div class="detail-info-value">${eq.latitude.toFixed(4)}, ${eq.longitude.toFixed(4)}</div>
+        <div class="mobile-detail-content">
+          <div class="mobile-detail-label">经纬度</div>
+          <div class="mobile-detail-value">${eq.latitude.toFixed(4)}°, ${eq.longitude.toFixed(4)}°</div>
         </div>
       </div>
-      
-      <div class="detail-info-item">
-        <div class="detail-info-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+
+      <div class="mobile-detail-info-item">
+        <div class="mobile-detail-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 2L12 22M12 22L18 16M12 22L6 16"/>
           </svg>
         </div>
-        <div class="detail-info-content">
-          <div class="detail-info-label">震源深度</div>
-          <div class="detail-info-value">${eq.depth.toFixed(1)} 公里</div>
+        <div class="mobile-detail-content">
+          <div class="mobile-detail-label">震源深度</div>
+          <div class="mobile-detail-value">${eq.depth.toFixed(1)} 公里</div>
         </div>
       </div>
-      
-      <div class="detail-info-item">
-        <div class="detail-info-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+
+      <div class="mobile-detail-info-item">
+        <div class="mobile-detail-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"/>
             <polyline points="12 6 12 12 16 14"/>
           </svg>
         </div>
-        <div class="detail-info-content">
-          <div class="detail-info-label">发震时刻</div>
-          <div class="detail-info-value">${timeStr}</div>
+        <div class="mobile-detail-content">
+          <div class="mobile-detail-label">发震时刻</div>
+          <div class="mobile-detail-value">${timeStr}</div>
         </div>
       </div>
-    </div>
-  `;
-  
-  document.getElementById('detail-popup').classList.add('open');
-  document.getElementById('overlay').classList.add('show');
+
+      <div class="mobile-detail-info-item">
+        <div class="mobile-detail-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+          </svg>
+        </div>
+        <div class="mobile-detail-content">
+          <div class="mobile-detail-label">地震类型</div>
+          <div class="mobile-detail-value">${getMagDesc(eq.mag)}</div>
+        </div>
+      </div>
+    `;
+
+    const mobileDetailPopup = document.getElementById('mobile-detail-popup');
+    const mobileDetailOverlay = document.getElementById('mobile-detail-popup-overlay');
+    if (mobileDetailPopup) mobileDetailPopup.classList.add('open');
+    if (mobileDetailOverlay) mobileDetailOverlay.classList.add('open');
+  }
+
+  // 停止地球自动旋转，并标记详情弹窗已打开
+  if (state.globe && state.globe.controls) {
+    state.globe.controls.autoRotate = false;
+  }
+  state.isDetailOpen = true;
+  // 清除可能存在的自动旋转恢复计时器
+  if (state.autoRotateTimeout) {
+    clearTimeout(state.autoRotateTimeout);
+    state.autoRotateTimeout = null;
+  }
 }
 
 function isDomesticQuake(place) {
@@ -1627,11 +2175,16 @@ function isDomesticQuake(place) {
 
 function closeDetail() {
   state.selectedId = null;
-  document.getElementById('detail-popup').classList.remove('open');
-  document.getElementById('overlay').classList.remove('show');
+  state.isDetailOpen = false;
+  const detailPopup = document.getElementById('detail-popup');
+  const overlay = document.getElementById('overlay');
+  if (detailPopup) detailPopup.classList.remove('open');
+  if (overlay) overlay.classList.remove('show');
   document.querySelectorAll('.latest-quake-item').forEach(item => {
     item.classList.remove('active');
   });
+  // 恢复地球自动旋转
+  resumeAutoRotate();
 }
 
 /**
@@ -1647,13 +2200,35 @@ function updateStats() {
   const avgMag = all.length > 0 ? all.reduce((a, b) => a + (b.mag || 0), 0) / all.length : 0;
   const avgDepth = all.length > 0 ? all.reduce((a, b) => a + (b.depth || 0), 0) / all.length : 0;
 
-  document.getElementById('stat-total').textContent = total;
-  document.getElementById('stat-max').textContent = maxMag.toFixed(1);
-  document.getElementById('stat-avg').textContent = avgMag.toFixed(1);
-  document.getElementById('stat-depth').textContent = avgDepth.toFixed(0) + 'km';
+  // 桌面端统计
+  const statTotal = document.getElementById('stat-total');
+  const statMax = document.getElementById('stat-max');
+  const statAvg = document.getElementById('stat-avg');
+  const statDepth = document.getElementById('stat-depth');
+  const countDomestic = document.getElementById('count-domestic');
+  const countOverseas = document.getElementById('count-overseas');
 
-  document.getElementById('count-domestic').textContent = domestic;
-  document.getElementById('count-overseas').textContent = overseas;
+  if (statTotal) statTotal.textContent = total;
+  if (statMax) statMax.textContent = maxMag.toFixed(1);
+  if (statAvg) statAvg.textContent = avgMag.toFixed(1);
+  if (statDepth) statDepth.textContent = avgDepth.toFixed(0) + 'km';
+  if (countDomestic) countDomestic.textContent = domestic;
+  if (countOverseas) countOverseas.textContent = overseas;
+
+  // 移动端统计
+  const mobileStatTotal = document.getElementById('mobile-stat-total');
+  const mobileStatMax = document.getElementById('mobile-stat-max');
+  const mobileStatAvg = document.getElementById('mobile-stat-avg');
+  const mobileStatDepth = document.getElementById('mobile-stat-depth');
+  const mobileCountDomestic = document.getElementById('mobile-count-domestic');
+  const mobileCountOverseas = document.getElementById('mobile-count-overseas');
+
+  if (mobileStatTotal) mobileStatTotal.textContent = total;
+  if (mobileStatMax) mobileStatMax.textContent = maxMag.toFixed(1);
+  if (mobileStatAvg) mobileStatAvg.textContent = avgMag.toFixed(1);
+  if (mobileStatDepth) mobileStatDepth.textContent = avgDepth.toFixed(0) + 'km';
+  if (mobileCountDomestic) mobileCountDomestic.textContent = domestic;
+  if (mobileCountOverseas) mobileCountOverseas.textContent = overseas;
 
   // 更新各时间范围的地震数量统计
   updateTimeRangeCounts();

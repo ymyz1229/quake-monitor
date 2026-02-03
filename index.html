@@ -419,7 +419,7 @@
     /* 地图控件 - 放在地图区域右上角 */
     .map-controls {
       position: absolute;
-      top: 72px;
+      top: 16px;
       right: 16px;
       display: flex;
       flex-direction: column;
@@ -1097,7 +1097,7 @@
       100% { width: 60px; height: 60px; opacity: 0; }
     }
     
-    /* 响应式 */
+    /* 响应式 - 平板 */
     @media (max-width: 1200px) {
       .latest-quakes-panel {
         position: fixed;
@@ -1118,9 +1118,902 @@
         right: 16px;
       }
     }
+
+    /* 响应式 - 移动端 */
+    @media (max-width: 768px) {
+      html {
+        font-size: 14px;
+      }
+
+      body {
+        overflow: hidden;
+      }
+
+      /* 隐藏桌面侧边栏 */
+      .sidebar {
+        display: none;
+      }
+
+      /* 移动端顶部导航栏 */
+      .mobile-header {
+        display: flex;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 52px;
+        background: rgba(18,18,26,0.95);
+        backdrop-filter: blur(20px);
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+        z-index: 1000;
+      }
+
+      .mobile-header-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .mobile-logo-icon {
+        width: 32px;
+        height: 32px;
+        background: linear-gradient(135deg, #00a8e8, #00d9a5);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .mobile-logo-icon svg {
+        width: 18px;
+        height: 18px;
+        color: #0a0a0f;
+      }
+
+      .mobile-logo-text {
+        font-size: 16px;
+        font-weight: 700;
+        background: linear-gradient(135deg, #fff, #00d9a5);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .mobile-menu-btn {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 10px;
+        color: rgba(255,255,255,0.8);
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .mobile-menu-btn:active {
+        background: rgba(255,255,255,0.1);
+        transform: scale(0.95);
+      }
+
+      .mobile-menu-btn svg {
+        width: 20px;
+        height: 20px;
+      }
+
+      /* 移动端抽屉菜单 */
+      .mobile-drawer {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 85%;
+        max-width: 320px;
+        background: linear-gradient(180deg, #12121a 0%, #0a0a0f 100%);
+        border-right: 1px solid rgba(255,255,255,0.08);
+        z-index: 2000;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        overflow-y: auto;
+        padding-bottom: 20px;
+      }
+
+      .mobile-drawer.open {
+        transform: translateX(0);
+      }
+
+      .mobile-drawer-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.6);
+        backdrop-filter: blur(4px);
+        z-index: 1999;
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.3s;
+      }
+
+      .mobile-drawer-overlay.open {
+        opacity: 1;
+        visibility: visible;
+      }
+
+      .mobile-drawer-header {
+        padding: 16px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .mobile-drawer-close {
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        color: rgba(255,255,255,0.6);
+        cursor: pointer;
+      }
+
+      /* 移动端底部列表按钮 */
+      .mobile-list-btn {
+        display: flex;
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 12px 24px;
+        background: linear-gradient(135deg, #00a8e8, #00d9a5);
+        border: none;
+        border-radius: 25px;
+        color: #0a0a0f;
+        font-size: 14px;
+        font-weight: 600;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        z-index: 100;
+        box-shadow: 0 4px 20px rgba(0,168,232,0.4);
+        transition: all 0.2s;
+      }
+
+      .mobile-list-btn:active {
+        transform: translateX(-50%) scale(0.95);
+      }
+
+      /* 移动端底部面板 */
+      .mobile-bottom-sheet {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 85%;
+        background: linear-gradient(180deg, #12121a 0%, #0a0a0f 100%);
+        border-radius: 20px 20px 0 0;
+        border-top: 1px solid rgba(255,255,255,0.08);
+        z-index: 1500;
+        transform: translateY(100%);
+        transition: transform 0.3s ease;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .mobile-bottom-sheet.open {
+        transform: translateY(0);
+      }
+
+      .mobile-sheet-header {
+        padding: 16px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-shrink: 0;
+      }
+
+      .mobile-sheet-handle {
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 40px;
+        height: 4px;
+        background: rgba(255,255,255,0.2);
+        border-radius: 2px;
+      }
+
+      .mobile-sheet-title {
+        font-size: 16px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .mobile-sheet-close {
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        color: rgba(255,255,255,0.6);
+        cursor: pointer;
+      }
+
+      .mobile-sheet-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      /* 移动端列表项 */
+      .mobile-quake-item {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px;
+        margin-bottom: 10px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 14px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .mobile-quake-item:active {
+        background: rgba(255,255,255,0.06);
+        transform: scale(0.98);
+      }
+
+      .mobile-quake-item.active {
+        background: rgba(0,168,232,0.1);
+        border-color: rgba(0,168,232,0.3);
+      }
+
+      .mobile-quake-mag {
+        width: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 14px;
+        font-weight: 700;
+        flex-shrink: 0;
+      }
+
+      .mobile-quake-info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .mobile-quake-place {
+        font-size: 14px;
+        font-weight: 500;
+        color: #fff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-bottom: 6px;
+      }
+
+      .mobile-quake-meta {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 12px;
+        color: rgba(255,255,255,0.5);
+      }
+
+      .mobile-quake-time {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .mobile-quake-time.recent::before {
+        content: '';
+        width: 6px;
+        height: 6px;
+        background: #00d9a5;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+      }
+
+      /* 移动端Tab切换 */
+      .mobile-tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .mobile-tab {
+        flex: 1;
+        padding: 10px 16px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 10px;
+        color: rgba(255,255,255,0.6);
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+      }
+
+      .mobile-tab.active {
+        background: rgba(0,168,232,0.15);
+        border-color: rgba(0,168,232,0.3);
+        color: #00d9a5;
+      }
+
+      .mobile-tab .count {
+        font-size: 12px;
+        background: rgba(255,255,255,0.1);
+        padding: 2px 8px;
+        border-radius: 10px;
+      }
+
+      .mobile-tab.active .count {
+        background: rgba(0,217,165,0.2);
+      }
+
+      /* 移动端筛选按钮组 */
+      .mobile-filters {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .mobile-filters::-webkit-scrollbar {
+        display: none;
+      }
+
+      .mobile-filter-btn {
+        padding: 8px 16px;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 20px;
+        color: rgba(255,255,255,0.7);
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .mobile-filter-btn.active {
+        background: linear-gradient(135deg, #00a8e8, #00d9a5);
+        border-color: transparent;
+        color: #0a0a0f;
+        font-weight: 600;
+      }
+
+    /* 移动端详情弹窗 - 底部占2/3高度 */
+    .mobile-detail-popup {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 66.67%;
+      background: linear-gradient(180deg, #1a1a26 0%, #12121a 100%);
+      border-radius: 24px 24px 0 0;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      z-index: 2000;
+      transform: translateY(100%);
+      transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 -10px 40px rgba(0,0,0,0.5);
+    }
+
+    .mobile-detail-popup.open {
+      transform: translateY(0);
+    }
+
+    .mobile-detail-popup-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 1999;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s;
+    }
+
+    .mobile-detail-popup-overlay.open {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .mobile-detail-header {
+      padding: 20px 20px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .mobile-detail-back {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      color: rgba(255,255,255,0.8);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .mobile-detail-back:active {
+      background: rgba(255,255,255,0.1);
+      transform: scale(0.95);
+    }
+
+    .mobile-detail-title {
+      font-size: 17px;
+      font-weight: 600;
+      flex: 1;
+    }
+
+    .mobile-detail-close {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      color: rgba(255,255,255,0.6);
+      cursor: pointer;
+    }
+
+    .mobile-detail-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 20px 20px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+      .mobile-detail-mag {
+        text-align: center;
+        padding: 30px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        margin-bottom: 20px;
+      }
+
+      .mobile-detail-mag-value {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 64px;
+        font-weight: 700;
+        line-height: 1;
+        margin-bottom: 10px;
+        text-shadow: 0 0 40px currentColor;
+      }
+
+      .mobile-detail-mag-type {
+        font-size: 16px;
+        color: rgba(255,255,255,0.7);
+      }
+
+      .mobile-detail-info-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+        padding: 16px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 14px;
+        margin-bottom: 12px;
+      }
+
+      .mobile-detail-icon {
+        width: 44px;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255,255,255,0.05);
+        border-radius: 12px;
+        color: rgba(255,255,255,0.6);
+        flex-shrink: 0;
+      }
+
+      .mobile-detail-icon svg {
+        width: 22px;
+        height: 22px;
+      }
+
+      .mobile-detail-content {
+        flex: 1;
+      }
+
+      .mobile-detail-label {
+        font-size: 12px;
+        color: rgba(255,255,255,0.4);
+        margin-bottom: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .mobile-detail-value {
+        font-size: 15px;
+        color: #fff;
+        font-weight: 500;
+        line-height: 1.4;
+      }
+
+      /* 主内容区适配 */
+      .main-content {
+        position: fixed;
+        inset: 0;
+        padding-top: 52px;
+      }
+
+      .map-wrapper {
+        border-radius: 0;
+      }
+
+      /* 地图控件适配 - 在顶部导航栏下方 */
+      .map-controls {
+        top: 16px !important;
+        right: 12px;
+        gap: 6px;
+      }
+
+      /* 桌面端地图控件 */
+      @media (min-width: 769px) {
+        .map-controls {
+          top: 16px !important;
+        }
+      }
+
+      .map-control-btn {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+      }
+
+      .map-control-btn svg {
+        width: 20px;
+        height: 20px;
+      }
+
+      /* 坐标显示适配 */
+      .coords-display {
+        bottom: 80px;
+        left: 12px;
+        padding: 8px 12px;
+        font-size: 12px;
+      }
+
+      /* 图例适配 */
+      .map-legend {
+        display: none;
+      }
+
+      .mobile-legend {
+        display: flex;
+        gap: 12px;
+        padding: 12px 0;
+        overflow-x: auto;
+        margin-bottom: 12px;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .mobile-legend::-webkit-scrollbar {
+        display: none;
+      }
+
+      .mobile-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 20px;
+        font-size: 12px;
+        color: rgba(255,255,255,0.7);
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .mobile-legend-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+      }
+
+      /* 加载状态适配 */
+      .loading-text {
+        font-size: 13px;
+      }
+
+      /* 右侧桌面面板隐藏 */
+      .latest-quakes-panel {
+        display: none;
+      }
+
+      /* 桌面详情弹窗隐藏 */
+      .detail-popup {
+        display: none;
+      }
+
+      .overlay {
+        display: none;
+      }
+    }
+
+    /* 桌面端隐藏移动端元素 */
+    @media (min-width: 769px) {
+      .mobile-header,
+      .mobile-drawer,
+      .mobile-drawer-overlay,
+      .mobile-list-btn,
+      .mobile-bottom-sheet,
+      .mobile-detail-popup {
+        display: none !important;
+      }
+    }
   </style>
 </head>
 <body>
+  <!-- 移动端顶部导航栏 -->
+  <header class="mobile-header">
+    <button class="mobile-menu-btn" id="mobile-menu-btn" title="菜单" style="position: absolute; left: 12px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="6" x2="21" y2="6"/>
+        <line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+    <div style="display: flex; align-items: center; gap: 10px; margin: 0 auto;">
+      <div class="mobile-logo-icon" style="width: 28px; height: 28px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="3" fill="currentColor"/>
+          <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+        </svg>
+      </div>
+      <div class="mobile-logo-text">震讯通</div>
+    </div>
+  </header>
+
+  <!-- 移动端抽屉菜单 -->
+  <div class="mobile-drawer-overlay" id="mobile-drawer-overlay"></div>
+  <aside class="mobile-drawer" id="mobile-drawer">
+    <div class="mobile-drawer-header">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div class="mobile-logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="3" fill="currentColor"/>
+            <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+          </svg>
+        </div>
+        <div>
+          <div style="font-size: 16px; font-weight: 700;">震讯通</div>
+          <div style="font-size: 11px; color: rgba(255,255,255,0.4);">全球地震实时监测</div>
+        </div>
+      </div>
+      <button class="mobile-drawer-close" id="mobile-drawer-close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- 时间筛选 -->
+    <div class="time-filter-section" style="padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+      <div class="section-title">时间范围</div>
+      <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 12px;">
+        <div class="date-field">
+          <label style="font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 6px; display: block;">开始日期</label>
+          <input type="date" id="mobile-start-date" style="width: 100%; padding: 10px 12px; font-size: 14px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff;">
+        </div>
+        <div class="date-field">
+          <label style="font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 6px; display: block;">结束日期</label>
+          <input type="date" id="mobile-end-date" style="width: 100%; padding: 10px 12px; font-size: 14px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff;">
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px; margin-top: 12px;">
+        <button class="btn btn-primary" id="mobile-apply-filter" style="flex: 1; padding: 10px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          查询
+        </button>
+        <button class="btn btn-secondary" id="mobile-reset-filter" title="重置" style="padding: 10px 14px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 快捷筛选 -->
+    <div class="quick-filters" style="padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+      <div class="section-title">快速选择</div>
+      <div class="mobile-filters" id="mobile-time-filters">
+        <button class="mobile-filter-btn" data-period="day">过去24小时</button>
+        <button class="mobile-filter-btn active" data-period="week">过去7天</button>
+        <button class="mobile-filter-btn" data-period="month">过去30天</button>
+      </div>
+    </div>
+
+    <!-- 震级筛选 -->
+    <div class="mag-filter-section" style="padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+      <div class="section-title">震级范围</div>
+      <div class="mag-range" style="margin-bottom: 0;">
+        <input type="number" id="mobile-mag-min" value="0" min="0" max="10" step="0.1" style="width: 70px; padding: 10px; font-size: 14px;">
+        <span>~</span>
+        <input type="number" id="mobile-mag-max" value="10" min="0" max="10" step="0.1" style="width: 70px; padding: 10px; font-size: 14px;">
+      </div>
+    </div>
+
+    <!-- 统计信息 -->
+    <div class="sidebar-stats" style="padding: 16px; flex: 1;">
+      <div class="section-title">统计信息</div>
+      <div class="stat-grid" style="grid-template-columns: 1fr 1fr;">
+        <div class="stat-box">
+          <div class="stat-value" id="mobile-stat-total">--</div>
+          <div class="stat-label">地震总数</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value" id="mobile-stat-max" style="color: #ff6b35;">--</div>
+          <div class="stat-label">最大震级</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value" id="mobile-stat-avg">--</div>
+          <div class="stat-label">平均震级</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value" id="mobile-stat-depth">--</div>
+          <div class="stat-label">平均深度</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 版权 -->
+    <div class="copyright" style="padding: 16px; border-top: 1px solid rgba(255,255,255,0.08);">
+      <div>制作：<a href="#">岩鸣杨子</a></div>
+      <div style="margin-top: 4px;">数据：USGS & Wolfx API</div>
+    </div>
+  </aside>
+
+  <!-- 移动端底部列表按钮 -->
+  <button class="mobile-list-btn" id="mobile-list-btn">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+    </svg>
+    最新地震
+    <span id="mobile-total-badge" style="background: rgba(0,0,0,0.2); padding: 2px 8px; border-radius: 10px; font-size: 12px;">0</span>
+  </button>
+
+  <!-- 移动端底部面板 -->
+  <div class="mobile-bottom-sheet" id="mobile-bottom-sheet">
+    <div class="mobile-sheet-handle"></div>
+    <div class="mobile-sheet-header">
+      <div class="mobile-sheet-title">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #ff6b35;">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+        最新地震
+      </div>
+      <button class="mobile-sheet-close" id="mobile-sheet-close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    
+    <!-- Tab切换 -->
+    <div style="padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+      <div class="mobile-tabs">
+        <button class="mobile-tab active" data-tab="domestic">
+          国内
+          <span class="count" id="mobile-count-domestic">0</span>
+        </button>
+        <button class="mobile-tab" data-tab="overseas">
+          海外
+          <span class="count" id="mobile-count-overseas">0</span>
+        </button>
+      </div>
+      
+      <!-- 图例 -->
+      <div class="mobile-legend">
+        <div class="mobile-legend-item">
+          <div class="mobile-legend-dot" style="background: #ff2d55;"></div>
+          <span>7.0+</span>
+        </div>
+        <div class="mobile-legend-item">
+          <div class="mobile-legend-dot" style="background: #ff6b35;"></div>
+          <span>6.0-6.9</span>
+        </div>
+        <div class="mobile-legend-item">
+          <div class="mobile-legend-dot" style="background: #ff9500;"></div>
+          <span>5.0-5.9</span>
+        </div>
+        <div class="mobile-legend-item">
+          <div class="mobile-legend-dot" style="background: #ffcc00;"></div>
+          <span>4.0-4.9</span>
+        </div>
+        <div class="mobile-legend-item">
+          <div class="mobile-legend-dot" style="background: #00a8e8;"></div>
+          <span>&lt;4.0</span>
+        </div>
+      </div>
+      
+      <!-- 排序 -->
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <span style="font-size: 13px; color: rgba(255,255,255,0.5);">共 <span id="mobile-total-quakes" style="color: #fff; font-weight: 600;">0</span> 条</span>
+        <select class="sort-select" id="mobile-sort-select" style="padding: 8px 12px;">
+          <option value="time-desc">时间倒序</option>
+          <option value="time-asc">时间正序</option>
+          <option value="mag-desc">震级倒序</option>
+          <option value="mag-asc">震级正序</option>
+        </select>
+      </div>
+    </div>
+    
+    <div class="mobile-sheet-content" id="mobile-quakes-list">
+      <!-- 地震列表 -->
+    </div>
+  </div>
+
+  <!-- 移动端详情弹窗遮罩 -->
+  <div class="mobile-detail-popup-overlay" id="mobile-detail-popup-overlay"></div>
+
+  <!-- 移动端详情弹窗 -->
+  <div class="mobile-detail-popup" id="mobile-detail-popup">
+    <div class="mobile-detail-header">
+      <button class="mobile-detail-back" id="mobile-detail-back" title="返回列表">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+      </button>
+      <div class="mobile-detail-title">地震详情</div>
+      <button class="mobile-detail-close" id="mobile-detail-close" title="关闭">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="mobile-detail-body" id="mobile-detail-body">
+      <!-- 详情内容 -->
+    </div>
+  </div>
+
   <div class="app-container">
     <!-- 左侧边栏 -->
     <aside class="sidebar" id="sidebar">
@@ -1174,10 +2067,10 @@
       <div class="quick-filters">
         <div class="section-title">快速选择</div>
         <div class="quick-filter-list">
-          <div class="quick-filter-item active" data-period="day">
+          <div class="quick-filter-item" data-period="day">
             <span class="quick-filter-label">过去24小时</span>
           </div>
-          <div class="quick-filter-item" data-period="week">
+          <div class="quick-filter-item active" data-period="week">
             <span class="quick-filter-label">过去7天</span>
           </div>
           <div class="quick-filter-item" data-period="month">
