@@ -708,42 +708,58 @@ function setupGlobeInteractions(container, camera, earth, controls) {
   const raycaster = new THREE.Raycaster();
   const mouse = new THREE.Vector2();
   
-  // 鼠标移动显示经纬度
+  // 鼠标移动显示经纬度（仅桌面端）
   container.addEventListener('mousemove', (event) => {
+    // 移动端不显示经纬度
+    if (checkMobile()) return;
+
     const rect = container.getBoundingClientRect();
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    
+
     raycaster.setFromCamera(mouse, camera);
     const intersects = raycaster.intersectObject(earth);
-    
+
     if (intersects.length > 0) {
       const point = intersects[0].point;
       const lat = 90 - (Math.acos(Math.max(-1, Math.min(1, point.y))) * 180 / Math.PI);
       const lng = ((Math.atan2(point.x, -point.z) * 180 / Math.PI) + 180) % 360 - 180;
-      
+
       const latStr = lat >= 0 ? `${lat.toFixed(2)}N` : `${Math.abs(lat).toFixed(2)}S`;
       const lngStr = lng >= 0 ? `${lng.toFixed(2)}E` : `${Math.abs(lng).toFixed(2)}W`;
-      
+
       const coordsEl = document.getElementById('mouse-coords');
       if (coordsEl) {
         coordsEl.innerHTML = `<span>${latStr}</span>, <span>${lngStr}</span>`;
       }
-      
+
       container.style.cursor = 'crosshair';
     } else {
       container.style.cursor = 'default';
     }
   });
-  
-  // 点击震中标记显示详情
-  container.addEventListener('click', (event) => {
+
+  // 点击/触摸震中标记显示详情
+  function handleMarkerInteraction(event) {
+    event.preventDefault();
+
     const rect = container.getBoundingClientRect();
-    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    
+    let clientX, clientY;
+
+    // 支持鼠标和触摸事件
+    if (event.changedTouches && event.changedTouches.length > 0) {
+      clientX = event.changedTouches[0].clientX;
+      clientY = event.changedTouches[0].clientY;
+    } else {
+      clientX = event.clientX;
+      clientY = event.clientY;
+    }
+
+    mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+
     raycaster.setFromCamera(mouse, camera);
-    
+
     // 收集所有可点击的标记对象
     const clickableObjects = [];
     state.globe.markers.forEach(group => {
@@ -753,9 +769,9 @@ function setupGlobeInteractions(container, camera, earth, controls) {
         }
       });
     });
-    
+
     const intersects = raycaster.intersectObjects(clickableObjects);
-    
+
     if (intersects.length > 0) {
       const clicked = intersects[0].object;
       const eq = clicked.userData.eq;
@@ -773,7 +789,12 @@ function setupGlobeInteractions(container, camera, earth, controls) {
         flyToLocationWithOffset(eq.latitude, eq.longitude, 2.2, isMobile);
       }
     }
-  });
+  }
+
+  // 桌面端点击事件
+  container.addEventListener('click', handleMarkerInteraction);
+  // 移动端触摸事件
+  container.addEventListener('touchend', handleMarkerInteraction, { passive: false });
 }
 
 /**
