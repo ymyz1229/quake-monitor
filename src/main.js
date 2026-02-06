@@ -19,7 +19,10 @@ const state = {
   chinaBorders: null,
   isMobile: false,
   isDetailOpen: false,  // 标记详情弹窗是否打开
-  autoRotateTimeout: null  // 自动旋转恢复计时器
+  autoRotateTimeout: null,  // 自动旋转恢复计时器
+  mapMode: '3d',  // 当前地图模式: '3d' | '2d'
+  map2d: null,    // Leaflet 2D地图实例
+  viewPosition2d: { lat: 35, lng: 105, zoom: 4 }  // 2D地图的独立视角状态
 };
 
 // 检测是否为移动端
@@ -69,7 +72,11 @@ async function init() {
     console.log('3. 初始化3D地球...');
     await initGlobe();
     console.log('3D地球初始化完成');
-    
+
+    console.log('3.5. 初始化2D地图...');
+    initMap2D();
+    console.log('2D地图初始化完成');
+
     console.log('4. 加载边界数据...');
     await loadBorderData();
     console.log('边界数据加载完成');
@@ -509,6 +516,68 @@ async function initGlobe() {
     camera.updateProjectionMatrix();
     renderer.setSize(width, height);
   });
+}
+
+/**
+ * 初始化2D地图
+ */
+async function initMap2D() {
+  const container = document.getElementById('map-2d-container');
+  if (!container) return;
+
+  // 检查 Leaflet 是否可用
+  if (!window.L) {
+    console.error('Leaflet 未加载');
+    container.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#ff6b6b;">2D地图引擎加载失败，请刷新页面重试</div>';
+    return;
+  }
+
+  // 创建 Leaflet 地图实例
+  const map = L.map(container, {
+    center: [35, 105],
+    zoom: 4,
+    minZoom: 2,
+    maxZoom: 18,
+    zoomControl: false,  // 禁用默认控件，使用自定义控件
+    worldCopyJump: true  // 支持全球拖动
+  });
+
+  // 使用 CartoDB Dark Matter 深色底图
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://osm.org/copyright">OSM</a> & <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 18
+  }).addTo(map);
+
+  // 初始化标记数组
+  map.markers = [];
+
+  // 监听地图移动事件，保存当前视角状态
+  map.on('moveend', () => {
+    if (state.mapMode === '2d') {
+      const center = map.getCenter();
+      state.viewPosition2d = {
+        lat: center.lat,
+        lng: center.lng,
+        zoom: map.getZoom()
+      };
+    }
+  });
+
+  // 监听鼠标移动，更新经纬度显示
+  map.on('mousemove', (e) => {
+    const lat = e.latlng.lat.toFixed(2);
+    const lng = e.latlng.lng.toFixed(2);
+    const coordsEl = document.getElementById('mouse-coords');
+    if (coordsEl && state.mapMode === '2d') {
+      coordsEl.textContent = `${lat}°, ${lng}°`;
+    }
+  });
+
+  state.map2d = map;
+
+  // 设置默认地图模式按钮状态
+  updateMapModeButtons();
 }
 
 /**
@@ -1103,6 +1172,78 @@ function flyToLocation(lat, lng, zoom = 2.5) {
 }
 
 /**
+ * 保存当前地图视角
+ */
+function saveCurrentViewPosition() {
+  if (state.mapMode === '2d' && state.map2d) {
+    const center = state.map2d.getCenter();
+    state.viewPosition2d = {
+      lat: center.lat,
+      lng: center.lng,
+      zoom: state.map2d.getZoom()
+    };
+  }
+  // 3D模式不需要保存视角，切换时始终聚焦中国
+}
+
+/**
+ * 更新地图模式按钮状态
+ */
+function updateMapModeButtons() {
+  const btn3d = document.getElementById('map-mode-3d');
+  const btn2d = document.getElementById('map-mode-2d');
+
+  if (btn3d) {
+    btn3d.classList.toggle('active', state.mapMode === '3d');
+  }
+  if (btn2d) {
+    btn2d.classList.toggle('active', state.mapMode === '2d');
+  }
+
+  // 更新主容器的类名
+  const mapWrapper = document.querySelector('.map-wrapper');
+  if (mapWrapper) {
+    mapWrapper.classList.toggle('map-mode-2d', state.mapMode === '2d');
+  }
+}
+
+/**
+ * 切换地图模式（3D/2D）
+ * @param {string} mode - '3d' 或 '2d'
+ */
+async function switchMapMode(mode) {
+  if (mode === state.mapMode) return;
+
+  console.log(`切换地图模式: ${state.mapMode} -> ${mode}`);
+
+  // 保存当前视角
+  saveCurrentViewPosition();
+
+  state.mapMode = mode;
+  updateMapModeButtons();
+
+  if (mode === '3d') {
+    // 3D模式：始终聚焦中国区域
+    console.log('切换到3D模式，聚焦中国区域');
+    flyToLocation(35, 105, 2.5);
+  } else {
+    // 2D模式：恢复保存的视角或默认视角
+    const pos = state.viewPosition2d;
+    console.log('切换到2D模式，恢复视角:', pos);
+    if (state.map2d) {
+      // 使用 setTimeout 确保 DOM 更新后再调整地图
+      setTimeout(() => {
+        state.map2d.invalidateSize();
+        state.map2d.setView([pos.lat, pos.lng], pos.zoom);
+        // 渲染2D地图标记
+        const allQuakes = [...state.domesticQuakes, ...state.overseasQuakes];
+        renderMap2DMarkers(allQuakes);
+      }, 100);
+    }
+  }
+}
+
+/**
  * 飞行到指定位置（带偏移，使震中点不被详情弹窗遮挡）
  * @param {number} lat - 纬度
  * @param {number} lng - 经度
@@ -1164,6 +1305,68 @@ function flyToLocationWithOffset(lat, lng, zoom = 2.2, isMobile = true) {
     }
   }
   animate();
+}
+
+/**
+ * 2D地图平移到指定位置（带偏移，使震中点不被详情弹窗遮挡）
+ * @param {number} lat - 纬度
+ * @param {number} lng - 经度
+ */
+function panMap2DToAvoidPopup(lat, lng) {
+  if (!state.map2d) return;
+
+  const map = state.map2d;
+  const zoom = map.getZoom();
+  const isMobile = checkMobile();
+
+  // 获取地图容器的尺寸
+  const containerHeight = map.getContainer().clientHeight;
+  const containerWidth = map.getContainer().clientWidth;
+
+  let targetScreenX, targetScreenY;
+
+  if (isMobile) {
+    // 移动端：弹窗占底部66.67%，将点位放在屏幕上方1/3区域
+    targetScreenY = containerHeight * 0.333;
+    targetScreenX = containerWidth * 0.5;
+  } else {
+    // 桌面端：详情面板在右侧（占360px），将点位放在左侧1/3区域
+    targetScreenY = containerHeight * 0.5;
+    targetScreenX = containerWidth * 0.33;
+  }
+
+  // 先移动到震中点
+  map.flyTo([lat, lng], zoom, { duration: 0.2 });
+
+  // 等待第一次移动完成后，调整中心点使震中点显示在目标位置
+  setTimeout(() => {
+    // 计算当前地图的地理范围
+    const bounds = map.getBounds();
+    const latSpan = bounds.getNorth() - bounds.getSouth();
+    const lngSpan = bounds.getEast() - bounds.getWest();
+    const latPerPixel = latSpan / containerHeight;
+    const lngPerPixel = lngSpan / containerWidth;
+
+    // 计算震中点当前在屏幕上的位置（应该接近中心）
+    const currentPoint = map.latLngToContainerPoint([lat, lng]);
+    const currentCenter = map.getCenter();
+
+    // 计算需要移动的像素距离（从当前位置到目标位置）
+    const deltaY = currentPoint.y - targetScreenY;
+    const deltaX = currentPoint.x - targetScreenX;
+
+    // 将像素偏移转换为经纬度偏移
+    // 注意：如果点位要在目标位置，那么中心点需要反向移动
+    const latOffset = -deltaY * latPerPixel;
+    const lngOffset = -deltaX * lngPerPixel;
+
+    // 计算目标中心点
+    const targetLat = currentCenter.lat + latOffset;
+    const targetLng = currentCenter.lng + lngOffset;
+
+    // 平滑移动到目标中心点
+    map.flyTo([targetLat, targetLng], zoom, { duration: 0.4 });
+  }, 250);
 }
 
 /**
@@ -1269,31 +1472,48 @@ function bindEvents() {
   const zoomInBtn = document.getElementById('map-zoom-in');
   const zoomOutBtn = document.getElementById('map-zoom-out');
   const resetBtn = document.getElementById('map-reset');
+  const mode3dBtn = document.getElementById('map-mode-3d');
+  const mode2dBtn = document.getElementById('map-mode-2d');
+
+  // 地图模式切换
+  if (mode3dBtn) {
+    mode3dBtn.addEventListener('click', () => switchMapMode('3d'));
+  }
+  if (mode2dBtn) {
+    mode2dBtn.addEventListener('click', () => switchMapMode('2d'));
+  }
 
   if (zoomInBtn) {
     zoomInBtn.addEventListener('click', () => {
-      if (state.globe) {
+      if (state.mapMode === '3d' && state.globe) {
         const current = state.globe.camera.position.length();
         const target = Math.max(1.3, current * 0.85);
         state.globe.camera.position.setLength(target);
+      } else if (state.mapMode === '2d' && state.map2d) {
+        state.map2d.zoomIn();
       }
     });
   }
 
   if (zoomOutBtn) {
     zoomOutBtn.addEventListener('click', () => {
-      if (state.globe) {
+      if (state.mapMode === '3d' && state.globe) {
         const current = state.globe.camera.position.length();
         const target = Math.min(5, current * 1.15);
         state.globe.camera.position.setLength(target);
+      } else if (state.mapMode === '2d' && state.map2d) {
+        state.map2d.zoomOut();
       }
     });
   }
 
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
-      if (state.globe) {
+      if (state.mapMode === '3d' && state.globe) {
         flyToLocation(35, 105, 3.2);
+      } else if (state.mapMode === '2d' && state.map2d) {
+        state.map2d.setView([35, 105], 4);
+        state.viewPosition2d = { lat: 35, lng: 105, zoom: 4 };
       }
     });
   }
@@ -1807,6 +2027,11 @@ function filterAndDisplay() {
   const allFiltered = [...state.domesticQuakes, ...state.overseasQuakes];
   updateGlobeMarkers(allFiltered);
 
+  // 更新2D地图标记
+  if (state.map2d) {
+    renderMap2DMarkers(allFiltered);
+  }
+
   displayQuakeList();
   updateStats();
 }
@@ -1882,8 +2107,14 @@ function displayQuakeList() {
           const eq = allQuakes.find(e => e.id === id);
           if (eq) {
             showDetail(eq);
-            // 调整相机位置（PC端偏移），使震中点不被右侧列表面板遮挡
-            flyToLocationWithOffset(eq.latitude, eq.longitude, 2.2, false);
+            // 根据当前地图模式进行定位
+            if (state.mapMode === '3d') {
+              // 3D：调整相机位置（PC端偏移），使震中点不被右侧列表面板遮挡
+              flyToLocationWithOffset(eq.latitude, eq.longitude, 2.2, false);
+            } else if (state.map2d) {
+              // 2D：飞行到震中位置（桌面端不需要偏移，因为弹窗在中间不影响）
+              state.map2d.flyTo([eq.latitude, eq.longitude], 8, { duration: 1.2 });
+            }
           }
         });
       });
@@ -1932,8 +2163,14 @@ function displayQuakeList() {
           const eq = allQuakes.find(e => e.id === id);
           if (eq) {
             showMobileDetail(eq);
-            // 调整相机位置（移动端偏移），使震中点不被详情遮挡
-            flyToLocationWithOffset(eq.latitude, eq.longitude, 2.2, true);
+            // 根据当前地图模式进行定位
+            if (state.mapMode === '3d') {
+              // 3D：调整相机位置（移动端偏移），使震中点不被详情遮挡
+              flyToLocationWithOffset(eq.latitude, eq.longitude, 2.2, true);
+            } else if (state.map2d) {
+              // 2D：调整地图视角，使震中点不被底部弹窗遮挡
+              panMap2DToAvoidPopup(eq.latitude, eq.longitude);
+            }
             // 关闭底部面板
             const mobileBottomSheet = document.getElementById('mobile-bottom-sheet');
             if (mobileBottomSheet) mobileBottomSheet.classList.remove('open');
@@ -2380,6 +2617,137 @@ function getMagDesc(mag) {
   if (m < 6.5) return '可能造成轻微破坏';
   if (m < 7.0) return '可能造成严重破坏';
   return '毁灭性破坏';
+}
+
+/**
+ * 获取2D地图标记大小（根据震级）
+ */
+function getMap2DMarkerSize(mag) {
+  const m = mag || 0;
+  if (m < 2.5) return 6;
+  if (m < 3.5) return 8;
+  if (m < 4.5) return 10;
+  if (m < 5.5) return 12;
+  if (m < 6.5) return 14;
+  if (m < 7.0) return 16;
+  return 18;
+}
+
+/**
+ * 创建2D地图标记HTML
+ */
+function createMap2DMarkerHTML(eq, size, color, animDuration) {
+  const mag = eq.mag || 0;
+  const ringCount = mag >= 5 ? 3 : mag >= 4 ? 2 : 1;
+
+  let ringsHtml = '';
+  for (let i = 0; i < ringCount; i++) {
+    const delay = (i * 0.8).toFixed(1);
+    ringsHtml += `
+      <div class="quake-ripple"
+           style="--ripple-color: ${color};
+                  --anim-duration: ${animDuration}s;
+                  --anim-delay: ${delay}s;">
+      </div>
+    `;
+  }
+
+  return `
+    <div style="position: relative; width: 100%; height: 100%;">
+      <div style="
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: ${size}px;
+        height: ${size}px;
+        background: ${color};
+        border-radius: 50%;
+        box-shadow: 0 0 10px ${color}80;
+        z-index: 2;
+      "></div>
+      ${ringsHtml}
+    </div>
+  `;
+}
+
+/**
+ * 创建2D地图标记
+ */
+function createMap2DMarker(eq) {
+  if (!eq.latitude || !eq.longitude) return null;
+
+  const mag = eq.mag || 0;
+  const color = getMagColor(mag);
+  const size = getMap2DMarkerSize(mag);
+
+  // 计算时间因子
+  const hoursAgo = (Date.now() - eq.time) / (1000 * 60 * 60);
+  const timeFactor = Math.max(0.3, Math.min(1, 1 - hoursAgo / 24));
+  const animDuration = (3 - timeFactor * 2).toFixed(1);
+
+  // 创建自定义图标
+  const icon = L.divIcon({
+    className: 'earthquake-marker',
+    html: createMap2DMarkerHTML(eq, size, color, animDuration),
+    iconSize: [size * 2.5, size * 2.5],
+    iconAnchor: [size * 1.25, size * 1.25]
+  });
+
+  const marker = L.marker([eq.latitude, eq.longitude], {
+    icon: icon,
+    zIndexOffset: Math.floor(mag * 100)
+  });
+
+  // 绑定点击事件
+  marker.on('click', () => {
+    state.selectedId = eq.id;
+
+    // 高亮列表项
+    document.querySelectorAll('.latest-quake-item, .mobile-quake-item').forEach(item => {
+      item.classList.toggle('active', item.dataset.id === eq.id);
+    });
+
+    // 显示详情
+    const isMobile = checkMobile();
+    if (isMobile) {
+      showMobileDetail(eq);
+      // 移动端：调整地图视角，使震中点不被底部弹窗遮挡
+      panMap2DToAvoidPopup(eq.latitude, eq.longitude);
+    } else {
+      showDetail(eq);
+    }
+  });
+
+  return marker;
+}
+
+/**
+ * 渲染2D地图标记
+ */
+function renderMap2DMarkers(quakes) {
+  if (!state.map2d) return;
+
+  const map = state.map2d;
+
+  // 清除所有现有标记
+  map.markers.forEach(marker => {
+    map.removeLayer(marker);
+  });
+  map.markers = [];
+
+  // 添加新标记
+  const sorted = [...quakes].sort((a, b) => (b.mag || 0) - (a.mag || 0));
+
+  sorted.forEach(eq => {
+    if (!eq.latitude || !eq.longitude) return;
+
+    const marker = createMap2DMarker(eq);
+    if (marker) {
+      marker.addTo(map);
+      map.markers.push(marker);
+    }
+  });
 }
 
 // 启动

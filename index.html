@@ -11,10 +11,14 @@
   <!-- Three.js for 3D Globe -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-  
+
   <!-- Three-Globe for enhanced visualization -->
   <script src="https://unpkg.com/three-globe@2.24.13/dist/three-globe.min.js"></script>
-  
+
+  <!-- Leaflet for 2D Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
   <!-- 自定义样式 -->
   <link rel="stylesheet" href="./src/styles/variables.css">
   <link rel="stylesheet" href="./src/styles/animations.css">
@@ -442,17 +446,64 @@
       transition: all 0.2s;
       font-size: 18px;
     }
-    
+
     .map-control-btn:hover {
-      background: rgba(255,255,255,0.1);
-      border-color: rgba(255,255,255,0.2);
+      background: rgba(0,217,165,0.15);
+      border-color: rgba(0,217,165,0.3);
+      transform: scale(1.05);
+    }
+
+    .map-control-btn:active {
+      transform: scale(0.95);
     }
     
     .map-control-btn svg {
       width: 18px;
       height: 18px;
     }
-    
+
+    /* 地图模式切换按钮 */
+    .mode-text-btn {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .mode-text-btn.active {
+      background: rgba(0,217,165,0.2);
+      border-color: rgba(0,217,165,0.5);
+      color: #00d9a5;
+    }
+
+    /* 地图视图容器 */
+    .map-view-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #globe-container {
+      z-index: 1;
+      visibility: visible;
+    }
+
+    #map-2d-container {
+      z-index: 0;
+      visibility: hidden;
+    }
+
+    /* 2D地图模式下的显示逻辑 */
+    .map-mode-2d #globe-container {
+      visibility: hidden;
+    }
+
+    .map-mode-2d #map-2d-container {
+      visibility: visible;
+      z-index: 1;
+    }
+
     /* 经纬度显示 */
     .coords-display {
       position: absolute;
@@ -1096,7 +1147,43 @@
       0% { width: 12px; height: 12px; opacity: 1; }
       100% { width: 60px; height: 60px; opacity: 0; }
     }
-    
+
+    /* 2D地图标记样式 */
+    .earthquake-marker {
+      background: transparent;
+      border: none;
+    }
+
+    .quake-ripple {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border: 2px solid var(--ripple-color);
+      border-radius: 50%;
+      animation: rippleExpand var(--anim-duration, 2s) ease-out infinite;
+      animation-delay: var(--anim-delay, 0s);
+    }
+
+    @keyframes rippleExpand {
+      0% { width: 8px; height: 8px; opacity: 1; }
+      100% { width: 40px; height: 40px; opacity: 0; }
+    }
+
+    /* Leaflet 深色地图样式覆盖 */
+    .leaflet-container {
+      background: #0a0a0f !important;
+    }
+
+    .leaflet-control-attribution {
+      background: rgba(18,18,26,0.9) !important;
+      color: rgba(255,255,255,0.5) !important;
+    }
+
+    .leaflet-control-attribution a {
+      color: rgba(255,255,255,0.7) !important;
+    }
+
     /* 响应式 - 平板 */
     @media (max-width: 1200px) {
       .latest-quakes-panel {
@@ -2121,8 +2208,11 @@
       <!-- 地图区域 -->
       <div class="map-wrapper">
         <!-- 3D地球容器 -->
-        <div id="globe-container"></div>
-        
+        <div id="globe-container" class="map-view-container"></div>
+
+        <!-- 2D地图容器 -->
+        <div id="map-2d-container" class="map-view-container"></div>
+
         <!-- 加载状态 -->
         <div class="loading-overlay" id="loading-overlay">
           <div class="loading-spinner"></div>
@@ -2133,6 +2223,8 @@
         
         <!-- 地图控件 -->
         <div class="map-controls">
+          <button class="map-control-btn mode-text-btn" id="map-mode-3d">3D</button>
+          <button class="map-control-btn mode-text-btn" id="map-mode-2d">2D</button>
           <button class="map-control-btn" id="map-zoom-in" title="放大">+</button>
           <button class="map-control-btn" id="map-zoom-out" title="缩小">−</button>
           <button class="map-control-btn" id="map-reset" title="重置视图">
