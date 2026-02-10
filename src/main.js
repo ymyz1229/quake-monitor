@@ -21,7 +21,7 @@ const state = {
   isDetailOpen: false,  // 标记详情弹窗是否打开
   autoRotateTimeout: null,  // 自动旋转恢复计时器
   mapMode: '3d',  // 当前地图模式: '3d' | '2d'
-  map2d: null,    // Leaflet 2D地图实例
+  map2d: null,    // Mapbox GL JS 2D地图实例
   viewPosition2d: { lat: 35, lng: 105, zoom: 4 }  // 2D地图的独立视角状态
 };
 
@@ -48,9 +48,11 @@ const API_CONFIG = {
   worldBordersBackup: 'https://raw.githubusercontent.com/datasets/geo-boundaries-world-110m/master/countries.geojson'
 };
 
-// Mapbox 配置 - 请替换为您的 Mapbox Access Token
+// Mapbox 配置
 const MAPBOX_CONFIG = {
-  accessToken: 'pk.eyJ1IjoiZGVtb191c2VyIiwiYSI6ImNrY3R5b3M4bDAwMXgyeG1xbnB5M3R5eXMifQ.demo_token', // 请替换为有效的 Mapbox Token
+  accessToken: 'pk.eyJ1IjoieW15ejEyMjkiLCJhIjoiY2o0cGJwcnVtMjJwMjJ3bDg2cmljcjB0cSJ9.XDj00jLjjSAn0WndffY3pw',
+  // Mapbox 自定义样式
+  customStyle: 'mapbox://styles/ymyz1229/ckkosb2ly0byy17s1kuonk3gg',
   // Mapbox 卫星影像纹理（全球等距柱状投影）
   satelliteTexture: 'https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.png?access_token={token}',
   // 使用 Static Images API 获取全球纹理（备用方案）
@@ -525,29 +527,39 @@ async function initMap2D() {
   const container = document.getElementById('map-2d-container');
   if (!container) return;
 
-  // 检查 Leaflet 是否可用
-  if (!window.L) {
-    console.error('Leaflet 未加载');
+  // 检查 Mapbox GL JS 是否可用
+  if (!window.mapboxgl) {
+    console.error('Mapbox GL JS 未加载');
     container.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#ff6b6b;">2D地图引擎加载失败，请刷新页面重试</div>';
     return;
   }
 
-  // 创建 Leaflet 地图实例
-  const map = L.map(container, {
-    center: [35, 105],
-    zoom: 4,
-    minZoom: 2,
+  // 设置 Mapbox Access Token
+  mapboxgl.accessToken = MAPBOX_CONFIG.accessToken;
+
+  // 创建 Mapbox 地图实例
+  const map = new mapboxgl.Map({
+    container: container,
+    style: MAPBOX_CONFIG.customStyle,
+    center: [105, 35],
+    zoom: 3.5,
+    minZoom: 1.5,
     maxZoom: 18,
-    zoomControl: false,  // 禁用默认控件，使用自定义控件
-    worldCopyJump: true  // 支持全球拖动
+    attributionControl: false,  // 使用自定义属性控件
+    pitchWithRotate: false,
+    dragRotate: false
   });
 
-  // 使用 CartoDB Dark Matter 深色底图
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://osm.org/copyright">OSM</a> & <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 18
-  }).addTo(map);
+  // 添加自定义导航控件
+  map.addControl(new mapboxgl.NavigationControl({
+    showCompass: false,
+    visualizePitch: false
+  }), 'top-right');
+
+  // 等待地图加载完成
+  await new Promise((resolve) => {
+    map.on('load', resolve);
+  });
 
   // 初始化标记数组
   map.markers = [];
@@ -566,8 +578,8 @@ async function initMap2D() {
 
   // 监听鼠标移动，更新经纬度显示
   map.on('mousemove', (e) => {
-    const lat = e.latlng.lat.toFixed(2);
-    const lng = e.latlng.lng.toFixed(2);
+    const lat = e.lngLat.lat.toFixed(2);
+    const lng = e.lngLat.lng.toFixed(2);
     const coordsEl = document.getElementById('mouse-coords');
     if (coordsEl && state.mapMode === '2d') {
       coordsEl.textContent = `${lat}°, ${lng}°`;
@@ -1233,8 +1245,8 @@ async function switchMapMode(mode) {
     if (state.map2d) {
       // 使用 setTimeout 确保 DOM 更新后再调整地图
       setTimeout(() => {
-        state.map2d.invalidateSize();
-        state.map2d.setView([pos.lat, pos.lng], pos.zoom);
+        state.map2d.resize();
+        state.map2d.flyTo({ center: [pos.lng, pos.lat], zoom: pos.zoom, duration: 0 });
         // 渲染2D地图标记
         const allQuakes = [...state.domesticQuakes, ...state.overseasQuakes];
         renderMap2DMarkers(allQuakes);
@@ -1336,19 +1348,12 @@ function panMap2DToAvoidPopup(lat, lng) {
   }
 
   // 先移动到震中点
-  map.flyTo([lat, lng], zoom, { duration: 0.2 });
+  map.flyTo({ center: [lng, lat], zoom: zoom, duration: 200 });
 
   // 等待第一次移动完成后，调整中心点使震中点显示在目标位置
   setTimeout(() => {
-    // 计算当前地图的地理范围
-    const bounds = map.getBounds();
-    const latSpan = bounds.getNorth() - bounds.getSouth();
-    const lngSpan = bounds.getEast() - bounds.getWest();
-    const latPerPixel = latSpan / containerHeight;
-    const lngPerPixel = lngSpan / containerWidth;
-
-    // 计算震中点当前在屏幕上的位置（应该接近中心）
-    const currentPoint = map.latLngToContainerPoint([lat, lng]);
+    // 计算震中点当前在屏幕上的像素位置
+    const currentPoint = map.project([lng, lat]);
     const currentCenter = map.getCenter();
 
     // 计算需要移动的像素距离（从当前位置到目标位置）
@@ -1356,16 +1361,14 @@ function panMap2DToAvoidPopup(lat, lng) {
     const deltaX = currentPoint.x - targetScreenX;
 
     // 将像素偏移转换为经纬度偏移
-    // 注意：如果点位要在目标位置，那么中心点需要反向移动
-    const latOffset = -deltaY * latPerPixel;
-    const lngOffset = -deltaX * lngPerPixel;
-
-    // 计算目标中心点
-    const targetLat = currentCenter.lat + latOffset;
-    const targetLng = currentCenter.lng + lngOffset;
+    // 使用 unproject 计算偏移后的经纬度
+    const targetPoint = map.project(currentCenter);
+    targetPoint.x -= deltaX;
+    targetPoint.y -= deltaY;
+    const targetLngLat = map.unproject(targetPoint);
 
     // 平滑移动到目标中心点
-    map.flyTo([targetLat, targetLng], zoom, { duration: 0.4 });
+    map.flyTo({ center: [targetLngLat.lng, targetLngLat.lat], zoom: zoom, duration: 400 });
   }, 250);
 }
 
@@ -2686,21 +2689,22 @@ function createMap2DMarker(eq) {
   const timeFactor = Math.max(0.3, Math.min(1, 1 - hoursAgo / 24));
   const animDuration = (3 - timeFactor * 2).toFixed(1);
 
-  // 创建自定义图标
-  const icon = L.divIcon({
-    className: 'earthquake-marker',
-    html: createMap2DMarkerHTML(eq, size, color, animDuration),
-    iconSize: [size * 2.5, size * 2.5],
-    iconAnchor: [size * 1.25, size * 1.25]
-  });
+  // 创建标记DOM元素
+  const el = document.createElement('div');
+  el.className = 'earthquake-marker';
+  el.style.width = `${size * 2.5}px`;
+  el.style.height = `${size * 2.5}px`;
+  el.innerHTML = createMap2DMarkerHTML(eq, size, color, animDuration);
 
-  const marker = L.marker([eq.latitude, eq.longitude], {
-    icon: icon,
-    zIndexOffset: Math.floor(mag * 100)
-  });
+  // 创建 Mapbox 标记
+  const marker = new mapboxgl.Marker({
+    element: el,
+    anchor: 'center'
+  }).setLngLat([eq.longitude, eq.latitude]);
 
   // 绑定点击事件
-  marker.on('click', () => {
+  el.addEventListener('click', (e) => {
+    e.stopPropagation();
     state.selectedId = eq.id;
 
     // 高亮列表项
@@ -2732,7 +2736,7 @@ function renderMap2DMarkers(quakes) {
 
   // 清除所有现有标记
   map.markers.forEach(marker => {
-    map.removeLayer(marker);
+    marker.remove();
   });
   map.markers = [];
 
