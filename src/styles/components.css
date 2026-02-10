@@ -33,17 +33,30 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--accent-ocean), var(--accent-aurora));
   border-radius: var(--radius-md);
   flex-shrink: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.nav-logo-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .nav-logo-text {
-  font-size: var(--text-lg);
-  font-weight: 700;
+  height: 20px;
+  display: flex;
+  align-items: center;
   white-space: nowrap;
   opacity: 0;
   transition: opacity var(--transition-normal);
+}
+
+.nav-logo-text img {
+  height: 100%;
+  width: auto;
 }
 
 .nav-sidebar.expanded .nav-logo-text {

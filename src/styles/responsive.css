@@ -90,13 +90,26 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, var(--accent-ocean), var(--accent-aurora));
     border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: transparent;
+  }
+
+  .top-header-logo-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
 
   .top-header-logo-text {
-    font-size: var(--text-lg);
-    font-weight: 700;
+    height: 18px;
+    display: flex;
+    align-items: center;
+  }
+
+  .top-header-logo-text img {
+    height: 100%;
+    width: auto;
   }
 
   /* 统计卡片网格 */

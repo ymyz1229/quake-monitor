@@ -157,8 +157,8 @@ export function renderSidebar(activeId = 'dashboard', onNavigate = () => {}) {
   return `
     <nav class="nav-sidebar">
       <div class="nav-logo">
-        <div class="nav-logo-icon">${getIcon('logo')}</div>
-        <span class="nav-logo-text">震讯通</span>
+        <div class="nav-logo-icon"><img src="./assets/icons/logo.png" alt="震讯通" /></div>
+        <span class="nav-logo-text"><img src="./assets/icons/name.svg" alt="震讯通" style="height: 20px; width: auto;" /></span>
       </div>
       <div class="nav-items">
         ${navItemsHtml}
@@ -197,8 +197,8 @@ export function renderTopHeader() {
   return `
     <header class="top-header">
       <div class="top-header-logo">
-        <div class="top-header-logo-icon">${getIcon('logo')}</div>
-        <span class="top-header-logo-text">震讯通</span>
+        <div class="top-header-logo-icon"><img src="./assets/icons/logo.png" alt="震讯通" /></div>
+        <span class="top-header-logo-text"><img src="./assets/icons/name.svg" alt="震讯通" style="height: 18px; width: auto;" /></span>
       </div>
       <button class="btn btn-icon btn-ghost" id="refresh-btn">
         ${getIcon('refresh')}
