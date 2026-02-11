@@ -550,12 +550,6 @@ async function initMap2D() {
     dragRotate: false
   });
 
-  // 添加自定义导航控件
-  map.addControl(new mapboxgl.NavigationControl({
-    showCompass: false,
-    visualizePitch: false
-  }), 'top-right');
-
   // 等待地图加载完成
   await new Promise((resolve) => {
     map.on('load', resolve);
