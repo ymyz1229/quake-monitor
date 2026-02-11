@@ -61,16 +61,17 @@ const MAPBOX_CONFIG = {
 
 /**
  * 初始化应用
+ * 优化加载顺序：先显示地球，再加载数据
  */
 async function init() {
   console.log('=== 应用初始化开始 ===');
   try {
     console.log('1. 设置默认日期...');
     setDefaultDates();
-    
+
     console.log('2. 绑定事件...');
     bindEvents();
-    
+
     console.log('3. 初始化3D地球...');
     await initGlobe();
     console.log('3D地球初始化完成');
@@ -79,21 +80,26 @@ async function init() {
     initMap2D();
     console.log('2D地图初始化完成');
 
+    // 地球显示后立即隐藏全屏loading
+    showLoading(false);
+
     console.log('4. 加载边界数据...');
-    await loadBorderData();
-    console.log('边界数据加载完成');
-    
+    loadBorderData().catch(err => {
+      console.warn('边界数据加载失败:', err);
+    });
+
     console.log('5. 加载地震数据...');
     await loadEarthquakeData();
     console.log('地震数据加载完成');
-    
+
     console.log('6. 启动定时刷新...');
     startAutoRefresh();
-    
+
     console.log('=== 应用初始化完成 ===');
   } catch (error) {
     console.error('应用初始化失败:', error);
     showError('应用初始化失败: ' + error.message);
+    showLoading(false);
   }
 }
 
@@ -1487,7 +1493,8 @@ function bindEvents() {
         const target = Math.max(1.3, current * 0.85);
         state.globe.camera.position.setLength(target);
       } else if (state.mapMode === '2d' && state.map2d) {
-        state.map2d.zoomIn();
+        const currentZoom = state.map2d.getZoom();
+        state.map2d.setZoom(currentZoom + 1);
       }
     });
   }
@@ -1499,7 +1506,8 @@ function bindEvents() {
         const target = Math.min(5, current * 1.15);
         state.globe.camera.position.setLength(target);
       } else if (state.mapMode === '2d' && state.map2d) {
-        state.map2d.zoomOut();
+        const currentZoom = state.map2d.getZoom();
+        state.map2d.setZoom(currentZoom - 1);
       }
     });
   }
@@ -1509,8 +1517,13 @@ function bindEvents() {
       if (state.mapMode === '3d' && state.globe) {
         flyToLocation(35, 105, 3.2);
       } else if (state.mapMode === '2d' && state.map2d) {
-        state.map2d.setView([35, 105], 4);
-        state.viewPosition2d = { lat: 35, lng: 105, zoom: 4 };
+        // Mapbox GL JS 使用 flyTo 聚焦到中国
+        state.map2d.flyTo({
+          center: [105, 35],
+          zoom: 3.5,
+          duration: 1000
+        });
+        state.viewPosition2d = { lat: 35, lng: 105, zoom: 3.5 };
       }
     });
   }
